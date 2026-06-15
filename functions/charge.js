@@ -7,6 +7,28 @@ export async function onRequestPost(context) {
     "Content-Type": "application/json",
   };
 
+  // 1. Validate environment variables are successfully injected
+  const user = env.CARDPOINTE_USER;
+  const pass = env.CARDPOINTE_PASS;
+  const mid = env.CARDPOINTE_MID;
+
+  if (!user || !pass || !mid) {
+    console.error("Pages Functions - CardPointe Credentials missing from env context!", {
+      user: !!user,
+      pass: !!pass,
+      mid: !!mid
+    });
+    return new Response(
+      JSON.stringify({ 
+        message: "Server Configuration Error: CardPointe credentials are empty or not injected. Please ensure you saved them in Cloudflare Pages Environment Variables and triggered a fresh build." 
+      }), 
+      {
+        status: 500,
+        headers: corsHeaders,
+      }
+    );
+  }
+
   const { token, amount, expiry, cvv2, zip, paymentLinkId } = await request.json();
 
   if (!token || !amount || !expiry || !cvv2 || !zip || !paymentLinkId) {
@@ -16,10 +38,10 @@ export async function onRequestPost(context) {
     });
   }
 
-  // 1. Process with CardPointe (using host from env context)
-  const auth = btoa(`${env.CARDPOINTE_USER}:${env.CARDPOINTE_PASS}`);
+  // 2. Process with CardPointe
+  const auth = btoa(`${user}:${pass}`);
   const cardpointeBody = {
-    merchid: env.CARDPOINTE_MID,
+    merchid: mid,
     account: token,
     amount: amount,
     expiry: expiry,
@@ -57,7 +79,7 @@ export async function onRequestPost(context) {
   const retref = cpResult.retref;
   const paidAt = new Date().toISOString();
 
-  // 2. Update Supabase link state using service_role key
+  // 3. Update Supabase link state using service_role key
   const supabaseRes = await fetch(`${env.SUPABASE_URL}/rest/v1/payment_links?id=eq.${paymentLinkId}`, {
     method: "PATCH",
     headers: {
@@ -83,7 +105,7 @@ export async function onRequestPost(context) {
   const records = await supabaseRes.json();
   const updatedRecord = records[0];
 
-  // 3. Dispatch internal alert email asynchronously to overnight printing seattle staff
+  // 4. Dispatch internal alert email asynchronously to overnight printing seattle staff
   const formattedPaidAt = new Date(paidAt).toLocaleString("en-US", {
     timeZone: "America/Los_Angeles",
     dateStyle: "medium",
