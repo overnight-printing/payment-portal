@@ -60,7 +60,7 @@ export async function onRequestPost(context) {
         imageBytes[i] = binaryStr.charCodeAt(i);
       }
 
-      const result = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
+      const result = await env.AI.run("@cf/meta/llama-4-scout-17b-16e-instruct", {
         prompt: EXTRACTION_PROMPT,
         image: [...imageBytes], // Workers AI expects a plain number array
       });
@@ -80,7 +80,7 @@ export async function onRequestPost(context) {
     try {
       const invoiceText = String(body.text).substring(0, 6000);
 
-      const result = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
+      const result = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
         messages: [
           { role: "system", content: EXTRACTION_PROMPT },
           { role: "user", content: `Invoice text to extract from:\n\n${invoiceText}` },

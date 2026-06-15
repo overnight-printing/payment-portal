@@ -479,7 +479,7 @@ Respond ONLY with a valid JSON object in this exact format with no extra text, e
         });
       }
 
-      const result = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
+      const result = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: `Extract the invoice data from the following invoice text:\n\n${invoiceText.substring(0, 8000)}` },
@@ -499,7 +499,7 @@ Respond ONLY with a valid JSON object in this exact format with no extra text, e
 
       const imageBytes = [...new Uint8Array(imageBuffer)];
 
-      const result = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
+      const result = await env.AI.run("@cf/meta/llama-4-scout-17b-16e-instruct", {
         prompt: `${systemPrompt}\n\nExtract the invoice data from this invoice image.`,
         image: imageBytes,
       });
