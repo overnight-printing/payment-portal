@@ -319,3 +319,127 @@ iframe[name="tokenFrame"] {
   background-color: var(--bg);
   text-overflow: ellipsis;
 }
+
+/* ---- Drag & Drop Invoice Zone ---- */
+.dropzone {
+  position: relative;
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  padding: 28px 20px;
+  text-align: center;
+  cursor: pointer;
+  background-color: var(--accent-bg);
+  transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+  margin-bottom: 28px;
+  overflow: hidden;
+}
+
+.dropzone:hover {
+  border-color: var(--accent);
+  background-color: rgba(30, 47, 102, 0.06);
+}
+
+.dropzone.dragging-over {
+  border-color: var(--accent);
+  background-color: rgba(30, 47, 102, 0.1);
+  transform: scale(1.01);
+  box-shadow: 0 0 0 4px rgba(30, 47, 102, 0.15);
+}
+
+.dropzone-icon {
+  font-size: 32px;
+  margin-bottom: 10px;
+  display: block;
+  user-select: none;
+}
+
+.dropzone-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-h);
+  margin: 0 0 4px 0;
+}
+
+.dropzone-sub {
+  font-size: 12px;
+  color: var(--text);
+  margin: 0;
+}
+
+.dropzone input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  margin: 0;
+  border-radius: 0;
+}
+
+/* Scanning / Processing state */
+.dropzone-scanning {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+}
+
+.scan-bar {
+  width: 70%;
+  height: 4px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.scan-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+  animation: scanPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes scanPulse {
+  0%   { width: 0%; opacity: 1; }
+  60%  { width: 100%; opacity: 1; }
+  80%  { width: 100%; opacity: 0.3; }
+  100% { width: 0%; opacity: 0; }
+}
+
+/* Field highlight when auto-filled */
+.input-autofilled {
+  animation: highlightField 2s ease forwards;
+}
+
+@keyframes highlightField {
+  0%   { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(30, 47, 102, 0.25); background-color: rgba(30, 47, 102, 0.05); }
+  70%  { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(30, 47, 102, 0.1); }
+  100% { border-color: var(--border); box-shadow: none; background-color: var(--input-bg); }
+}
+
+/* Divider between dropzone and manual form */
+.form-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 22px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.form-divider::before,
+.form-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+

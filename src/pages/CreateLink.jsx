@@ -1,4 +1,50 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
+
+// Worker URL - in production this is the Cloudflare Worker, in dev it's localhost:8787
+const getWorkerUrl = () => {
+  if (window.location.hostname === 'localhost') {
+    return import.meta.env.VITE_WORKER_URL || 'http://localhost:8787';
+  }
+  return ''; // Cloudflare Pages Functions act as same-origin proxy in production
+};
+
+// Dynamically load PDF.js from CDN on first use
+let pdfJsLoaded = false;
+async function loadPdfJs() {
+  if (pdfJsLoaded || window.pdfjsLib) {
+    pdfJsLoaded = true;
+    return window.pdfjsLib;
+  }
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    script.onload = () => {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      pdfJsLoaded = true;
+      resolve(window.pdfjsLib);
+    };
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+}
+
+// Extract all text from a PDF file as a single string
+async function extractTextFromPdf(arrayBuffer) {
+  const pdfjsLib = await loadPdfJs();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const pages = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const strings = content.items.map((item) => item.str);
+    pages.push(strings.join(' '));
+  }
+  return pages.join('\n');
+}
+
+const ACCEPTED_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+const ACCEPTED_EXTENSIONS = ['.pdf', '.png', '.jpg', '.jpeg', '.webp'];
 
 export default function CreateLink() {
   const [orderNumber, setOrderNumber] = useState('');
@@ -6,11 +52,127 @@ export default function CreateLink() {
   const [customerName, setCustomerName] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
-  
+
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [createdLink, setCreatedLink] = useState('');
   const [copied, setCopied] = useState(false);
+
+  // Drag-and-drop state
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [scanStatus, setScanStatus] = useState(null); // null | 'scanning' | 'success' | 'error'
+  const [scanMessage, setScanMessage] = useState('');
+  const [autofilledFields, setAutofilledFields] = useState(new Set());
+  const fileInputRef = useRef(null);
+  const dragCounterRef = useRef(0);
+
+  // Reset autofill highlight after animation
+  const markAutofilled = useCallback((fields) => {
+    setAutofilledFields(new Set(fields));
+    setTimeout(() => setAutofilledFields(new Set()), 2200);
+  }, []);
+
+  const processInvoiceFile = useCallback(async (file) => {
+    if (!file) return;
+
+    const isAccepted = ACCEPTED_TYPES.includes(file.type) ||
+      ACCEPTED_EXTENSIONS.some(ext => file.name.toLowerCase().endsWith(ext));
+
+    if (!isAccepted) {
+      setScanStatus('error');
+      setScanMessage('Unsupported file type. Please drop a PDF or image file.');
+      setTimeout(() => setScanStatus(null), 3500);
+      return;
+    }
+
+    setScanStatus('scanning');
+    setScanMessage('Reading invoice...');
+
+    try {
+      const workerBase = getWorkerUrl();
+      const buffer = await file.arrayBuffer();
+
+      let response;
+
+      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+        // Text PDF: extract text client-side, send as JSON
+        setScanMessage('Extracting text from PDF...');
+        const text = await extractTextFromPdf(buffer);
+        setScanMessage('Analyzing invoice with AI...');
+
+        response = await fetch(`${workerBase}/analyze-invoice`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        });
+      } else {
+        // Image: send raw bytes, let vision model process
+        setScanMessage('Analyzing invoice image with AI...');
+        response = await fetch(`${workerBase}/analyze-invoice`, {
+          method: 'POST',
+          headers: { 'Content-Type': file.type || 'image/png' },
+          body: buffer,
+        });
+      }
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.message || `Server error: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      // Populate fields and track which ones were filled
+      const filled = [];
+      if (data.order_number) { setOrderNumber(data.order_number); filled.push('orderNumber'); }
+      if (data.amount)       { setAmount(data.amount);             filled.push('amount'); }
+      if (data.customer_name) { setCustomerName(data.customer_name); filled.push('customerName'); }
+      if (data.company_name) { setCompanyName(data.company_name); filled.push('companyName'); }
+      if (data.customer_email) { setCustomerEmail(data.customer_email); filled.push('customerEmail'); }
+
+      markAutofilled(filled);
+
+      const filledCount = filled.length;
+      if (filledCount > 0) {
+        setScanStatus('success');
+        setScanMessage(`Auto-filled ${filledCount} field${filledCount > 1 ? 's' : ''} from invoice`);
+      } else {
+        setScanStatus('error');
+        setScanMessage('No data could be extracted. Please fill in the fields manually.');
+      }
+      setTimeout(() => setScanStatus(null), 4000);
+    } catch (err) {
+      console.error('Invoice scan error:', err);
+      setScanStatus('error');
+      setScanMessage(err.message || 'Failed to analyze invoice. Please try again.');
+      setTimeout(() => setScanStatus(null), 4000);
+    }
+  }, [markAutofilled]);
+
+  // Drag event handlers
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    dragCounterRef.current += 1;
+    setIsDraggingOver(true);
+  };
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current === 0) setIsDraggingOver(false);
+  };
+  const handleDragOver = (e) => { e.preventDefault(); };
+  const handleDrop = (e) => {
+    e.preventDefault();
+    dragCounterRef.current = 0;
+    setIsDraggingOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) processInvoiceFile(file);
+  };
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) processInvoiceFile(file);
+    e.target.value = ''; // reset so same file can be dropped again
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -20,11 +182,10 @@ export default function CreateLink() {
     setCopied(false);
 
     try {
-      // Validate inputs (company name is optional)
       if (!orderNumber || !amount || !customerName || !customerEmail) {
         throw new Error('All required fields must be filled.');
       }
-      
+
       const parsedAmount = parseFloat(amount);
       if (isNaN(parsedAmount) || parsedAmount <= 0) {
         throw new Error('Please enter a valid amount greater than 0.');
@@ -33,13 +194,12 @@ export default function CreateLink() {
       // Combine customer and company name into the customer_name column to preserve DB schema
       const combinedName = companyName ? `${customerName} (${companyName})` : customerName;
 
-      const response = await fetch('/create-link', {
+      const workerBase = getWorkerUrl();
+      const response = await fetch(`${workerBase}/create-link`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          order_number: orderNumber, // maps to Invoice Number
+          order_number: orderNumber,
           amount: parsedAmount.toFixed(2),
           customer_name: combinedName,
           customer_email: customerEmail,
@@ -52,13 +212,13 @@ export default function CreateLink() {
         throw new Error(data.message || 'Failed to create payment link.');
       }
 
-      const frontendBase = window.location.origin.includes('localhost') 
-        ? window.location.origin 
+      const frontendBase = window.location.origin.includes('localhost')
+        ? window.location.origin
         : 'https://pay.overnightprintingseattle.com';
-      
+
       const link = `${frontendBase}/pay/${data.id}`;
       setCreatedLink(link);
-      
+
       // Reset form
       setOrderNumber('');
       setAmount('');
@@ -78,6 +238,9 @@ export default function CreateLink() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const inputClass = (fieldId) =>
+    autofilledFields.has(fieldId) ? 'input-autofilled' : '';
+
   return (
     <div className="card fade-in">
       <div className="brand-logo-container">
@@ -85,6 +248,59 @@ export default function CreateLink() {
       </div>
       <h1>Create Payment Link</h1>
       <p className="subtitle">Staff portal to generate secure custom checkout links for clients.</p>
+
+      {/* ---- Drag & Drop Zone ---- */}
+      <div
+        className={`dropzone${isDraggingOver ? ' dragging-over' : ''}`}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        onClick={() => !scanStatus && fileInputRef.current?.click()}
+        role="button"
+        aria-label="Drop invoice file to auto-fill"
+        tabIndex={0}
+        onKeyDown={(e) => e.key === 'Enter' && fileInputRef.current?.click()}
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.png,.jpg,.jpeg,.webp"
+          onChange={handleFileChange}
+          style={{ display: 'none' }}
+          tabIndex={-1}
+        />
+
+        {scanStatus === 'scanning' ? (
+          <div className="dropzone-scanning">
+            <span style={{ fontSize: '28px' }}>🔍</span>
+            <p className="dropzone-title">{scanMessage}</p>
+            <div className="scan-bar">
+              <div className="scan-bar-fill" />
+            </div>
+          </div>
+        ) : scanStatus === 'success' ? (
+          <div className="dropzone-scanning">
+            <span style={{ fontSize: '28px', color: 'var(--success)' }}>✓</span>
+            <p className="dropzone-title" style={{ color: 'var(--success)' }}>{scanMessage}</p>
+          </div>
+        ) : scanStatus === 'error' ? (
+          <div className="dropzone-scanning">
+            <span style={{ fontSize: '28px', color: 'var(--error)' }}>⚠</span>
+            <p className="dropzone-title" style={{ color: 'var(--error)' }}>{scanMessage}</p>
+          </div>
+        ) : (
+          <>
+            <span className="dropzone-icon">📄</span>
+            <p className="dropzone-title">
+              {isDraggingOver ? 'Release to analyze invoice' : 'Drop invoice here to auto-fill'}
+            </p>
+            <p className="dropzone-sub">PDF or image (PNG, JPG) • AI will extract invoice details</p>
+          </>
+        )}
+      </div>
+
+      <div className="form-divider">or fill in manually</div>
 
       {error && (
         <div className="alert alert-error">
@@ -107,12 +323,12 @@ export default function CreateLink() {
             An email containing this link has been automatically sent to the customer.
           </p>
           <div className="copy-block">
-            <input 
-              type="text" 
-              readOnly 
-              value={createdLink} 
-              className="copy-input" 
-              onClick={(e) => e.target.select()} 
+            <input
+              type="text"
+              readOnly
+              value={createdLink}
+              className="copy-input"
+              onClick={(e) => e.target.select()}
             />
             <button type="button" className="btn btn-secondary" onClick={handleCopy} style={{ padding: '8px 16px', fontSize: '14px' }}>
               {copied ? 'Copied! ✓' : 'Copy Link'}
@@ -131,6 +347,7 @@ export default function CreateLink() {
             value={orderNumber}
             onChange={(e) => setOrderNumber(e.target.value)}
             disabled={isLoading}
+            className={inputClass('orderNumber')}
           />
         </div>
 
@@ -145,6 +362,7 @@ export default function CreateLink() {
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             disabled={isLoading}
+            className={inputClass('amount')}
           />
         </div>
 
@@ -157,17 +375,19 @@ export default function CreateLink() {
             value={customerName}
             onChange={(e) => setCustomerName(e.target.value)}
             disabled={isLoading}
+            className={inputClass('customerName')}
           />
         </div>
 
         <div className="form-group">
-          <label htmlFor="companyName">Company Name (Optional)</label>
+          <label htmlFor="companyName">Company Name <span style={{ opacity: 0.5, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(Optional)</span></label>
           <input
             id="companyName"
             type="text"
             value={companyName}
             onChange={(e) => setCompanyName(e.target.value)}
             disabled={isLoading}
+            className={inputClass('companyName')}
           />
         </div>
 
@@ -180,6 +400,7 @@ export default function CreateLink() {
             value={customerEmail}
             onChange={(e) => setCustomerEmail(e.target.value)}
             disabled={isLoading}
+            className={inputClass('customerEmail')}
           />
         </div>
 

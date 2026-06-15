@@ -49,6 +49,8 @@ export default {
         return await handleCreateLink(request, env, corsHeaders);
       } else if (url.pathname === "/charge" && request.method === "POST") {
         return await handleCharge(request, env, corsHeaders);
+      } else if (url.pathname === "/analyze-invoice" && request.method === "POST") {
+        return await handleAnalyzeInvoice(request, env, corsHeaders);
       } else {
         return new Response(JSON.stringify({ message: "Not Found" }), {
           status: 404,
@@ -440,4 +442,107 @@ async function handleCharge(request, env, corsHeaders) {
     status: 200,
     headers: { "Content-Type": "application/json", ...corsHeaders },
   });
+}
+
+/**
+ * Handles invoice analysis using Cloudflare Workers AI.
+ * Accepts either raw extracted text (from PDF.js) or raw image bytes.
+ * Returns a structured JSON object with extracted invoice fields.
+ */
+async function handleAnalyzeInvoice(request, env, corsHeaders) {
+  const contentType = request.headers.get("Content-Type") || "";
+
+  // System prompt for structured invoice data extraction
+  const systemPrompt = `You are a precise invoice data extraction assistant. 
+Extract the following fields from the provided invoice text or image:
+- order_number: Invoice number, order number, or PO number (string, just the number without # prefix)
+- amount: Total amount due, balance due, or grand total (string, decimal number only, no currency symbols like $)
+- customer_name: The name of the bill-to customer or client (string, full name)
+- company_name: The company or business name of the customer (string, or empty string if not present)
+- customer_email: Customer email address if present (string, or empty string if not found)
+
+Respond ONLY with a valid JSON object in this exact format with no extra text, explanation, or markdown:
+{"order_number":"","amount":"","customer_name":"","company_name":"","customer_email":""}`;
+
+  let aiResponse;
+
+  try {
+    if (contentType.includes("application/json")) {
+      // Text-based invoice: use llama-3.1-8b-instruct
+      const body = await request.json();
+      const invoiceText = body.text || "";
+
+      if (!invoiceText.trim()) {
+        return new Response(JSON.stringify({ message: "No invoice text provided" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      }
+
+      const result = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `Extract the invoice data from the following invoice text:\n\n${invoiceText.substring(0, 8000)}` },
+        ],
+      });
+
+      aiResponse = result.response || "";
+    } else {
+      // Image-based invoice: use llama-3.2-11b-vision-instruct
+      const imageBuffer = await request.arrayBuffer();
+      if (!imageBuffer.byteLength) {
+        return new Response(JSON.stringify({ message: "No image data provided" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      }
+
+      const imageBytes = [...new Uint8Array(imageBuffer)];
+
+      const result = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
+        prompt: `${systemPrompt}\n\nExtract the invoice data from this invoice image.`,
+        image: imageBytes,
+      });
+
+      aiResponse = result.response || "";
+    }
+
+    // Strip markdown fences if the model wrapped the JSON
+    const cleaned = aiResponse
+      .replace(/```json\s*/gi, "")
+      .replace(/```\s*/g, "")
+      .trim();
+
+    // Extract the first JSON object from the response
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.error("AI response did not contain valid JSON:", aiResponse);
+      return new Response(
+        JSON.stringify({ message: "Could not parse invoice data from AI response", raw: aiResponse }),
+        { status: 422, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    const extracted = JSON.parse(jsonMatch[0]);
+
+    // Normalize: ensure all expected fields exist and are strings
+    const normalized = {
+      order_number: String(extracted.order_number || "").trim(),
+      amount: String(extracted.amount || "").replace(/[^0-9.]/g, "").trim(),
+      customer_name: String(extracted.customer_name || "").trim(),
+      company_name: String(extracted.company_name || "").trim(),
+      customer_email: String(extracted.customer_email || "").trim(),
+    };
+
+    return new Response(JSON.stringify(normalized), {
+      status: 200,
+      headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
+  } catch (err) {
+    console.error("Invoice analysis error:", err);
+    return new Response(
+      JSON.stringify({ message: "Invoice analysis failed", error: err.message }),
+      { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+    );
+  }
 }

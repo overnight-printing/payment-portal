@@ -9,3 +9,6 @@ compatibility_date = "2024-03-18"
 # - SUPABASE_URL
 # - SUPABASE_SERVICE_ROLE_KEY
 # - RESEND_API_KEY
+
+[ai]
+binding = "AI"
