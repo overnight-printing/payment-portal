@@ -357,6 +357,17 @@ async function handleCharge(request, env, corsHeaders) {
   const records = await supabaseRes.json();
   const updatedRecord = records[0];
 
+  // Parse customer name and company name
+  const customerNameRaw = updatedRecord.customer_name || '';
+  let customerName = customerNameRaw;
+  let companyName = '';
+
+  const nameMatch = customerNameRaw.match(/^(.*?)\s*\((.*?)\)$/);
+  if (nameMatch) {
+    customerName = nameMatch[1];
+    companyName = nameMatch[2];
+  }
+
   // 3. Send Internal Notification Email to staff via Resend
   const formattedPaidAt = new Date(paidAt).toLocaleString("en-US", {
     timeZone: "America/Los_Angeles",
@@ -367,13 +378,13 @@ async function handleCharge(request, env, corsHeaders) {
   const staffEmailBody = {
     from: "Billing Alerts <billing@overnightprintingseattle.com>",
     to: ["contact@overnightprintingseattle.com"],
-    subject: `[결제완료] 주문 #${updatedRecord.order_number} - $${parseFloat(amount).toFixed(2)}`,
+    subject: `[결제완료] 청구서 #${updatedRecord.order_number} - $${parseFloat(amount).toFixed(2)}`,
     html: `
       <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e1e8; border-radius: 12px; background-color: #f9fafb; color: #111827;">
         <h2 style="color: #059669; margin-top: 0; font-size: 20px; font-weight: 700; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px;">결제 완료 알림 (내부용)</h2>
         <table style="width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 15px;">
           <tr>
-            <td style="padding: 8px 0; color: #4b5563; font-weight: 500;">주문번호:</td>
+            <td style="padding: 8px 0; color: #4b5563; font-weight: 500;">청구서 번호:</td>
             <td style="padding: 8px 0; font-weight: 600;">#${updatedRecord.order_number}</td>
           </tr>
           <tr>
@@ -382,11 +393,17 @@ async function handleCharge(request, env, corsHeaders) {
           </tr>
           <tr>
             <td style="padding: 8px 0; color: #4b5563; font-weight: 500;">고객명:</td>
-            <td style="padding: 8px 0;">${updatedRecord.customer_name}</td>
+            <td style="padding: 8px 0;">${customerName}</td>
           </tr>
+          ${companyName ? `
+          <tr>
+            <td style="padding: 8px 0; color: #4b5563; font-weight: 500;">회사명:</td>
+            <td style="padding: 8px 0; font-weight: 600;">${companyName}</td>
+          </tr>
+          ` : ''}
           <tr>
             <td style="padding: 8px 0; color: #4b5563; font-weight: 500;">고객이메일:</td>
-            <td style="padding: 8px 0;"><a href="mailto:${updatedRecord.customer_email}" style="color: #6d28d9; text-decoration: none;">${updatedRecord.customer_email}</a></td>
+            <td style="padding: 8px 0;"><a href="mailto:${updatedRecord.customer_email}" style="color: #1e2f66; text-decoration: none;">${updatedRecord.customer_email}</a></td>
           </tr>
           <tr>
             <td style="padding: 8px 0; color: #4b5563; font-weight: 500;">결제시각:</td>

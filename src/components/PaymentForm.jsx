@@ -242,7 +242,6 @@ export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess })
             id="expiry"
             type="text"
             required
-            placeholder="MM/YY"
             value={expiry}
             onChange={handleExpiryChange}
             disabled={isProcessing}
@@ -256,7 +255,6 @@ export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess })
             id="cvv"
             type="password"
             required
-            placeholder="e.g. 123"
             value={cvv}
             onChange={(e) => setCvv(e.target.value.replace(/\D/g, '').slice(0, 4))}
             disabled={isProcessing}
@@ -271,7 +269,6 @@ export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess })
           id="zip"
           type="text"
           required
-          placeholder="e.g. 98101"
           value={zip}
           onChange={(e) => setZip(e.target.value.replace(/\D/g, '').slice(0, 5))}
           disabled={isProcessing}

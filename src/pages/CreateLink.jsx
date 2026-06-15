@@ -4,6 +4,7 @@ export default function CreateLink() {
   const [orderNumber, setOrderNumber] = useState('');
   const [amount, setAmount] = useState('');
   const [customerName, setCustomerName] = useState('');
+  const [companyName, setCompanyName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   
   const [isLoading, setIsLoading] = useState(false);
@@ -11,7 +12,6 @@ export default function CreateLink() {
   const [createdLink, setCreatedLink] = useState('');
   const [copied, setCopied] = useState(false);
 
-  // Derive worker API base URL from env or fallback to localhost wrangler dev port
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
@@ -20,9 +20,9 @@ export default function CreateLink() {
     setCopied(false);
 
     try {
-      // Validate inputs
+      // Validate inputs (company name is optional)
       if (!orderNumber || !amount || !customerName || !customerEmail) {
-        throw new Error('All fields are required.');
+        throw new Error('All required fields must be filled.');
       }
       
       const parsedAmount = parseFloat(amount);
@@ -30,15 +30,18 @@ export default function CreateLink() {
         throw new Error('Please enter a valid amount greater than 0.');
       }
 
+      // Combine customer and company name into the customer_name column to preserve DB schema
+      const combinedName = companyName ? `${customerName} (${companyName})` : customerName;
+
       const response = await fetch('/create-link', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          order_number: orderNumber,
-          amount: parsedAmount.toFixed(2), // Send as decimal string representation
-          customer_name: customerName,
+          order_number: orderNumber, // maps to Invoice Number
+          amount: parsedAmount.toFixed(2),
+          customer_name: combinedName,
           customer_email: customerEmail,
         }),
       });
@@ -49,8 +52,6 @@ export default function CreateLink() {
         throw new Error(data.message || 'Failed to create payment link.');
       }
 
-      // Format payment URL based on the generated ID
-      // If deployed domain is pay.overnightprintingseattle.com, use that, or fallback to current origin
       const frontendBase = window.location.origin.includes('localhost') 
         ? window.location.origin 
         : 'https://pay.overnightprintingseattle.com';
@@ -62,6 +63,7 @@ export default function CreateLink() {
       setOrderNumber('');
       setAmount('');
       setCustomerName('');
+      setCompanyName('');
       setCustomerEmail('');
     } catch (err) {
       setError(err.message);
@@ -121,12 +123,11 @@ export default function CreateLink() {
 
       <form onSubmit={handleSubmit}>
         <div className="form-group">
-          <label htmlFor="orderNumber">Order Number</label>
+          <label htmlFor="orderNumber">Invoice Number</label>
           <input
             id="orderNumber"
             type="text"
             required
-            placeholder="e.g. 10294"
             value={orderNumber}
             onChange={(e) => setOrderNumber(e.target.value)}
             disabled={isLoading}
@@ -141,7 +142,6 @@ export default function CreateLink() {
             step="0.01"
             min="0.01"
             required
-            placeholder="e.g. 247.50"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             disabled={isLoading}
@@ -154,9 +154,19 @@ export default function CreateLink() {
             id="customerName"
             type="text"
             required
-            placeholder="e.g. Jane Doe"
             value={customerName}
             onChange={(e) => setCustomerName(e.target.value)}
+            disabled={isLoading}
+          />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="companyName">Company Name (Optional)</label>
+          <input
+            id="companyName"
+            type="text"
+            value={companyName}
+            onChange={(e) => setCompanyName(e.target.value)}
             disabled={isLoading}
           />
         </div>
@@ -167,7 +177,6 @@ export default function CreateLink() {
             id="customerEmail"
             type="email"
             required
-            placeholder="e.g. jane.doe@example.com"
             value={customerEmail}
             onChange={(e) => setCustomerEmail(e.target.value)}
             disabled={isLoading}

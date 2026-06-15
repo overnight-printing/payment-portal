@@ -71,6 +71,17 @@ export default function PaymentPage() {
     );
   }
 
+  // Parse out customer name and company name if they are in the format "Customer Name (Company Name)"
+  const customerNameRaw = paymentLink?.customer_name || '';
+  let customerName = customerNameRaw;
+  let companyName = '';
+
+  const match = customerNameRaw.match(/^(.*?)\s*\((.*?)\)$/);
+  if (match) {
+    customerName = match[1];
+    companyName = match[2];
+  }
+
   if (localPaid) {
     return (
       <div className="card fade-in" style={{ textAlign: 'center' }}>
@@ -98,13 +109,19 @@ export default function PaymentPage() {
           
           <div className="receipt" style={{ width: '100%', boxSizing: 'border-box', textAlign: 'left' }}>
             <div className="receipt-row">
-              <span className="receipt-label">Order Number</span>
+              <span className="receipt-label">Invoice Number</span>
               <span className="receipt-value">#{paymentLink?.order_number}</span>
             </div>
             <div className="receipt-row">
-              <span className="receipt-label">Customer</span>
-              <span className="receipt-value">{paymentLink?.customer_name}</span>
+              <span className="receipt-label">Customer Name</span>
+              <span className="receipt-value">{customerName}</span>
             </div>
+            {companyName && (
+              <div className="receipt-row">
+                <span className="receipt-label">Company Name</span>
+                <span className="receipt-value">{companyName}</span>
+              </div>
+            )}
             {retref && (
               <div className="receipt-row">
                 <span className="receipt-label">Ref Number</span>
@@ -134,13 +151,19 @@ export default function PaymentPage() {
 
       <div className="receipt">
         <div className="receipt-row">
-          <span className="receipt-label">Order Number</span>
+          <span className="receipt-label">Invoice Number</span>
           <span className="receipt-value">#{paymentLink.order_number}</span>
         </div>
         <div className="receipt-row">
-          <span className="receipt-label">Customer</span>
-          <span className="receipt-value">{paymentLink.customer_name}</span>
+          <span className="receipt-label">Customer Name</span>
+          <span className="receipt-value">{customerName}</span>
         </div>
+        {companyName && (
+          <div className="receipt-row">
+            <span className="receipt-label">Company Name</span>
+            <span className="receipt-value">{companyName}</span>
+          </div>
+        )}
         <div className="receipt-row">
           <span className="receipt-label">Total Due</span>
           <span className="receipt-value">${parseFloat(paymentLink.amount).toFixed(2)} USD</span>
