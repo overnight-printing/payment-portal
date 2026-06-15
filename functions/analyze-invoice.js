@@ -133,11 +133,12 @@ function parseAndReturn(aiResponseText) {
     .replace(/```\s*/g, "")
     .trim();
 
-  const jsonMatch = cleaned.match(/\{[\s\S]*?\}/);
+  // Greedy match: first { to last } — captures the entire JSON object even with nested braces
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
     console.error("AI returned no parseable JSON. Raw:", aiResponseText);
     return new Response(
-      JSON.stringify({ message: "AI could not extract structured data from invoice", raw: aiResponseText }),
+      JSON.stringify({ message: "AI could not extract structured data from invoice", raw: String(aiResponseText).substring(0, 500) }),
       { status: 422, headers: CORS_HEADERS }
     );
   }
@@ -146,8 +147,9 @@ function parseAndReturn(aiResponseText) {
   try {
     extracted = JSON.parse(jsonMatch[0]);
   } catch (parseErr) {
+    console.error("JSON.parse failed on:", jsonMatch[0]);
     return new Response(
-      JSON.stringify({ message: "Failed to parse AI JSON output", raw: jsonMatch[0] }),
+      JSON.stringify({ message: "Failed to parse AI JSON output", raw: jsonMatch[0].substring(0, 500), error: parseErr.message }),
       { status: 422, headers: CORS_HEADERS }
     );
   }
