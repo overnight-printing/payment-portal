@@ -11,6 +11,7 @@ export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess })
   const iframeRef = useRef(null);
   const resolveTokenRef = useRef(null);
   const rejectTokenRef = useRef(null);
+  const latestTokenRef = useRef(null); // Ref to hold the token received prior to button submit
 
   // Compute fixed iframe URL only once on mount to prevent the iframe from reloading
   // when component props or processing state changes (e.g. isProcessing toggling)
@@ -65,6 +66,10 @@ export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess })
         
         if (token && !data.error && (!data.errorCode || data.errorCode === '0' || data.errorCode === 0)) {
           console.log('PaymentForm - Token received successfully:', token);
+          
+          // Cache the latest received token for instant retrieval
+          latestTokenRef.current = token;
+
           if (resolveTokenRef.current) {
             resolveTokenRef.current(token);
             resolveTokenRef.current = null;
@@ -103,11 +108,18 @@ export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess })
   // Trigger tokenizer in iframe and wait for the token via promise
   const requestCardToken = () => {
     return new Promise((resolve, reject) => {
+      // If we already have a token captured from the automatic focus-out event, use it immediately!
+      if (latestTokenRef.current) {
+        console.log('PaymentForm - Resolving immediately with pre-captured token:', latestTokenRef.current);
+        resolve(latestTokenRef.current);
+        return;
+      }
+
       resolveTokenRef.current = resolve;
       rejectTokenRef.current = reject;
 
       if (iframeRef.current && iframeRef.current.contentWindow) {
-        console.log('PaymentForm - Sending "tokenize" commands to iframe contentWindow. TargetOrigin: https://fts.cardconnect.com');
+        console.log('PaymentForm - No pre-captured token. Sending "tokenize" commands to iframe contentWindow. TargetOrigin: https://fts.cardconnect.com');
         // Send both plain string and JSON formats with fts.cardconnect.com targetOrigin
         iframeRef.current.contentWindow.postMessage('tokenize', 'https://fts.cardconnect.com');
         iframeRef.current.contentWindow.postMessage(JSON.stringify({ action: 'tokenize' }), 'https://fts.cardconnect.com');
