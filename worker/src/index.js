@@ -142,7 +142,7 @@ async function handleGetLink(request, env, corsHeaders) {
  * Handles creating a payment link record in Supabase and emailing the link via Resend.
  */
 async function handleCreateLink(request, env, corsHeaders) {
-  const { order_number, amount, customer_name, customer_email, attachment } = await request.json();
+  const { order_number, amount, customer_name, customer_email, attachment, attachments } = await request.json();
 
   if (!order_number || !amount || !customer_name || !customer_email) {
     return new Response(JSON.stringify({ message: "Missing required fields" }), {
@@ -246,7 +246,14 @@ async function handleCreateLink(request, env, corsHeaders) {
     `,
   };
 
-  if (attachment && attachment.content && attachment.filename) {
+  if (attachments && Array.isArray(attachments)) {
+    resendEmailBody.attachments = attachments
+      .filter(att => att && att.content && att.filename)
+      .map(att => ({
+        content: att.content,
+        filename: att.filename,
+      }));
+  } else if (attachment && attachment.content && attachment.filename) {
     resendEmailBody.attachments = [
       {
         content: attachment.content,

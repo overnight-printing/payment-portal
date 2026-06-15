@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 
 // All API calls go to same-origin Cloudflare Pages Functions.
 // In local dev, Wrangler serves both the Pages Functions and the static assets on the same port.
@@ -123,7 +123,7 @@ export default function CreateLink() {
   const [customerName, setCustomerName] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
-  const [attachment, setAttachment] = useState(null);
+  const [uploadedInvoices, setUploadedInvoices] = useState([]);
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -132,8 +132,6 @@ export default function CreateLink() {
 
   // Drag-and-drop state
   const [isDraggingOver, setIsDraggingOver] = useState(false);
-  const [scanStatus, setScanStatus] = useState(null); // null | 'scanning' | 'success' | 'error'
-  const [scanMessage, setScanMessage] = useState('');
   const [autofilledFields, setAutofilledFields] = useState(new Set());
   const fileInputRef = useRef(null);
   const dragCounterRef = useRef(0);
@@ -144,6 +142,50 @@ export default function CreateLink() {
     setTimeout(() => setAutofilledFields(new Set()), 2200);
   }, []);
 
+  // Consolidate parsed values when uploadedInvoices state changes
+  useEffect(() => {
+    const successfulInvoices = uploadedInvoices.filter(inv => inv.status === 'success');
+    if (successfulInvoices.length === 0) return;
+
+    // Comma join order numbers
+    const orderNumbers = successfulInvoices
+      .map(inv => inv.orderNumber)
+      .filter(Boolean);
+    const uniqueOrderNumbers = [...new Set(orderNumbers)];
+    setOrderNumber(uniqueOrderNumbers.join(', '));
+
+    // Sum amounts
+    const totalAmount = successfulInvoices
+      .reduce((sum, inv) => {
+        const amt = parseFloat(inv.amount);
+        return isNaN(amt) ? sum : sum + amt;
+      }, 0);
+    setAmount(totalAmount > 0 ? totalAmount.toFixed(2) : '');
+
+    // Autofill name/company/email from first successful invoice
+    const firstWithEmail = successfulInvoices.find(inv => inv.customerEmail);
+    if (firstWithEmail) {
+      setCustomerEmail(firstWithEmail.customerEmail);
+    }
+    const firstWithName = successfulInvoices.find(inv => inv.customerName);
+    if (firstWithName) {
+      setCustomerName(firstWithName.customerName);
+    }
+    const firstWithCompany = successfulInvoices.find(inv => inv.companyName);
+    if (firstWithCompany) {
+      setCompanyName(firstWithCompany.companyName);
+    }
+
+    // Trigger autofill visual cue
+    const fieldsToHighlight = [];
+    if (orderNumbers.length > 0) fieldsToHighlight.push('orderNumber');
+    if (totalAmount > 0) fieldsToHighlight.push('amount');
+    if (firstWithName) fieldsToHighlight.push('customerName');
+    if (firstWithCompany) fieldsToHighlight.push('companyName');
+    if (firstWithEmail) fieldsToHighlight.push('customerEmail');
+    markAutofilled(fieldsToHighlight);
+  }, [uploadedInvoices, markAutofilled]);
+
   const processInvoiceFile = useCallback(async (file) => {
     if (!file) return;
 
@@ -151,43 +193,53 @@ export default function CreateLink() {
       ACCEPTED_EXTENSIONS.some(ext => file.name.toLowerCase().endsWith(ext));
 
     if (!isAccepted) {
-      setScanStatus('error');
-      setScanMessage('Unsupported file type. Please drop a PDF or image file.');
-      setTimeout(() => setScanStatus(null), 3500);
+      setError(`Unsupported file type: ${file.name}. Please select a PDF or image file.`);
       return;
     }
 
-    setScanStatus('scanning');
-    setScanMessage('Reading invoice...');
+    const uniqueId = Date.now() + Math.random().toString(36).substring(2, 7);
+
+    const newInvoice = {
+      id: uniqueId,
+      filename: file.name,
+      orderNumber: '',
+      amount: '',
+      customerName: '',
+      companyName: '',
+      customerEmail: '',
+      attachment: null,
+      status: 'scanning',
+      message: 'Reading invoice...',
+    };
+
+    setUploadedInvoices(prev => [...prev, newInvoice]);
 
     try {
       const buffer = await file.arrayBuffer();
 
       // Read file to Base64 for Resend attachment
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const result = e.target.result;
-        const base64Content = result.split(',')[1];
-        setAttachment({
-          content: base64Content,
-          filename: file.name
-        });
+      const base64Content = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const result = e.target.result;
+          resolve(result.split(',')[1]);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const fileAttachment = {
+        content: base64Content,
+        filename: file.name
       };
-      reader.readAsDataURL(file);
 
       let requestBody;
 
       if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
-        // Text PDF: extract text client-side, send as JSON { text }
-        setScanMessage('Extracting text from PDF...');
         const text = await extractTextFromPdf(buffer);
-        setScanMessage('Analyzing invoice with AI...');
         requestBody = JSON.stringify({ text });
       } else {
-        // Image: compress client-side then send as base64 JSON
-        setScanMessage('Compressing image...');
         const imageBase64 = await compressImageToBase64(buffer, file.type);
-        setScanMessage('Analyzing invoice image with AI...');
         requestBody = JSON.stringify({ imageBase64 });
       }
 
@@ -208,38 +260,32 @@ export default function CreateLink() {
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        // Surface the real server error so staff can see what went wrong
         throw new Error(errData.error || errData.message || `Server error ${response.status}`);
       }
 
       const data = await response.json();
 
-      // Populate fields and track which ones were filled
-      const filled = [];
-      if (data.order_number) { setOrderNumber(data.order_number); filled.push('orderNumber'); }
-      if (data.amount)       { setAmount(data.amount);             filled.push('amount'); }
-      if (data.customer_name) { setCustomerName(data.customer_name); filled.push('customerName'); }
-      if (data.company_name) { setCompanyName(data.company_name); filled.push('companyName'); }
-      if (data.customer_email) { setCustomerEmail(data.customer_email); filled.push('customerEmail'); }
+      setUploadedInvoices(prev => prev.map(inv => inv.id === uniqueId ? {
+        ...inv,
+        orderNumber: data.order_number || '',
+        amount: data.amount || '',
+        customerName: data.customer_name || '',
+        companyName: data.company_name || '',
+        customerEmail: data.customer_email || '',
+        attachment: fileAttachment,
+        status: 'success',
+        message: 'Parsed successfully'
+      } : inv));
 
-      markAutofilled(filled);
-
-      const filledCount = filled.length;
-      if (filledCount > 0) {
-        setScanStatus('success');
-        setScanMessage(`Auto-filled ${filledCount} field${filledCount > 1 ? 's' : ''} from invoice`);
-      } else {
-        setScanStatus('error');
-        setScanMessage('No data could be extracted. Please fill in the fields manually.');
-      }
-      setTimeout(() => setScanStatus(null), 4000);
     } catch (err) {
       console.error('Invoice scan error:', err);
-      setScanStatus('error');
-      setScanMessage(err.message || 'Failed to analyze invoice. Please try again.');
-      setTimeout(() => setScanStatus(null), 4000);
+      setUploadedInvoices(prev => prev.map(inv => inv.id === uniqueId ? {
+        ...inv,
+        status: 'error',
+        message: err.message || 'Failed to scan'
+      } : inv));
     }
-  }, [markAutofilled, passcode]);
+  }, [passcode]);
 
   const handleVerifyPasscode = async (e) => {
     e.preventDefault();
@@ -327,12 +373,16 @@ export default function CreateLink() {
     e.preventDefault();
     dragCounterRef.current = 0;
     setIsDraggingOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file) processInvoiceFile(file);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      files.forEach(processInvoiceFile);
+    }
   };
   const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) processInvoiceFile(file);
+    const files = Array.from(e.target.files);
+    if (files.length > 0) {
+      files.forEach(processInvoiceFile);
+    }
     e.target.value = ''; // reset so same file can be dropped again
   };
 
@@ -353,11 +403,16 @@ export default function CreateLink() {
         throw new Error('Please enter a valid amount greater than 0.');
       }
 
-      // Combine customer, company name, and job description into customer_name column to preserve DB schema
+      // Combine customer and company name into customer_name column to preserve DB schema
       let combinedName = customerName;
       if (companyName) {
         combinedName += ` (${companyName})`;
       }
+
+      // Collect attachments from successfully uploaded invoices
+      const attachmentsPayload = uploadedInvoices
+        .filter(inv => inv.status === 'success' && inv.attachment)
+        .map(inv => inv.attachment);
 
       const workerBase = API_BASE;
       const response = await fetch(`${workerBase}/create-link`, {
@@ -371,7 +426,8 @@ export default function CreateLink() {
           amount: parsedAmount.toFixed(2),
           customer_name: combinedName,
           customer_email: customerEmail,
-          attachment: attachment,
+          attachment: attachmentsPayload[0] || null, // backwards compatibility
+          attachments: attachmentsPayload,
         }),
       });
 
@@ -400,7 +456,7 @@ export default function CreateLink() {
       setCustomerName('');
       setCompanyName('');
       setCustomerEmail('');
-      setAttachment(null);
+      setUploadedInvoices([]);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -445,7 +501,7 @@ export default function CreateLink() {
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
-        onClick={() => !scanStatus && fileInputRef.current?.click()}
+        onClick={() => fileInputRef.current?.click()}
         role="button"
         aria-label="Drop invoice file to auto-fill"
         tabIndex={0}
@@ -455,74 +511,118 @@ export default function CreateLink() {
           ref={fileInputRef}
           type="file"
           accept=".pdf,.png,.jpg,.jpeg,.webp"
+          multiple
           onChange={handleFileChange}
           style={{ display: 'none' }}
           tabIndex={-1}
         />
 
-        {scanStatus === 'scanning' ? (
-          <div className="dropzone-scanning">
-            <span style={{ fontSize: '28px' }}>🔍</span>
-            <p className="dropzone-title">{scanMessage}</p>
-            <div className="scan-bar">
-              <div className="scan-bar-fill" />
-            </div>
-          </div>
-        ) : scanStatus === 'success' ? (
-          <div className="dropzone-scanning">
-            <span style={{ fontSize: '28px', color: 'var(--success)' }}>✓</span>
-            <p className="dropzone-title" style={{ color: 'var(--success)' }}>{scanMessage}</p>
-          </div>
-        ) : scanStatus === 'error' ? (
-          <div className="dropzone-scanning">
-            <span style={{ fontSize: '28px', color: 'var(--error)' }}>⚠</span>
-            <p className="dropzone-title" style={{ color: 'var(--error)' }}>{scanMessage}</p>
-          </div>
-        ) : (
-          <>
-            <span className="dropzone-icon">📄</span>
-            <p className="dropzone-title">
-              {isDraggingOver ? 'Release to analyze invoice' : 'Drop invoice here to auto-fill'}
-            </p>
-            <p className="dropzone-sub">PDF or image (PNG, JPG) • AI will extract invoice details</p>
-          </>
-        )}
+        <>
+          <span className="dropzone-icon">📄</span>
+          <p className="dropzone-title">
+            {isDraggingOver ? 'Release to analyze invoices' : 'Drop invoice(s) here to auto-fill'}
+          </p>
+          <p className="dropzone-sub">PDF or image (PNG, JPG) • AI will extract details • Multiple files supported</p>
+        </>
       </div>
 
-      {/* ---- Attachment Pill ---- */}
-      {attachment && (
-        <div className="attachment-pill" style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          background: 'rgba(30, 47, 102, 0.05)',
-          border: '1px dashed rgba(30, 47, 102, 0.2)',
-          padding: '8px 12px',
-          borderRadius: '8px',
+      {/* ---- Uploaded Invoices List ---- */}
+      {uploadedInvoices.length > 0 && (
+        <div className="uploaded-invoices-list" style={{
+          marginTop: '16px',
           marginBottom: '16px',
-          fontSize: '14px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px',
         }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span>📎</span>
-            <strong style={{ color: 'var(--navy)' }}>{attachment.filename}</strong>
-            <span style={{ opacity: 0.6 }}>(Invoice attached)</span>
-          </span>
-          <button
-            type="button"
-            onClick={() => setAttachment(null)}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--error)',
-              cursor: 'pointer',
-              fontWeight: 'bold',
-              padding: '0 4px',
-            }}
-          >
-            ✕
-          </button>
+          <h3 style={{ fontSize: '15px', color: 'var(--navy)', margin: '0 0 4px 0' }}>Uploaded Invoices</h3>
+          {uploadedInvoices.map((inv) => (
+            <div key={inv.id} className={`invoice-item-row ${inv.status}`} style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '10px 14px',
+              borderRadius: '8px',
+              border: '1px solid',
+              borderColor: inv.status === 'success' ? '#e2e8f0' : inv.status === 'error' ? 'rgba(239, 68, 68, 0.2)' : '#e2e8f0',
+              background: inv.status === 'success' ? '#f8fafc' : inv.status === 'error' ? 'rgba(239, 68, 68, 0.05)' : '#ffffff',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
+                {inv.status === 'scanning' ? (
+                  <div style={{
+                    width: '14px',
+                    height: '14px',
+                    border: '2px solid rgba(30, 47, 102, 0.1)',
+                    borderTopColor: 'var(--navy)',
+                    borderRadius: '50%',
+                    animation: 'spin 0.8s ease-in-out infinite',
+                  }} />
+                ) : inv.status === 'success' ? (
+                  <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>✓</span>
+                ) : (
+                  <span style={{ color: 'var(--error)', fontWeight: 'bold' }}>⚠</span>
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                  <span style={{ fontWeight: 600, fontSize: '13.5px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                    {inv.filename}
+                  </span>
+                  <span style={{ fontSize: '11px', opacity: 0.7 }}>
+                    {inv.status === 'success' 
+                      ? `Invoice #${inv.orderNumber || 'Unknown'} • $${inv.amount || '0.00'}` 
+                      : inv.message}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setUploadedInvoices(prev => prev.filter(item => item.id !== inv.id));
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--error)',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  fontSize: '14px',
+                  padding: '4px 8px',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
         </div>
       )}
+
+      {/* Mismatched Details Warning */}
+      {(() => {
+        const successful = uploadedInvoices.filter(inv => inv.status === 'success');
+        if (successful.length <= 1) return null;
+        const firstEmail = successful[0].customerEmail?.toLowerCase().trim();
+        const firstName = successful[0].customerName?.toLowerCase().trim();
+        const mismatch = successful.some(inv => 
+          (inv.customerEmail?.toLowerCase().trim() !== firstEmail) ||
+          (inv.customerName?.toLowerCase().trim() !== firstName)
+        );
+        if (!mismatch) return null;
+        return (
+          <div className="alert alert-error" style={{
+            background: 'rgba(217, 119, 6, 0.1)',
+            borderColor: 'rgba(217, 119, 6, 0.3)',
+            color: '#d97706',
+            marginBottom: '16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+          }}>
+            <span style={{ fontSize: '20px' }}>⚠️</span>
+            <div style={{ fontSize: '13.5px', lineHeight: '1.4' }}>
+              <strong>Mismatched Customer Details:</strong> The uploaded invoices contain different customer names or email addresses. Please verify and correct the final fields below.
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="form-divider">or fill in manually</div>
 
