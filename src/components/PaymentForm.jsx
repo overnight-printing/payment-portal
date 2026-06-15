@@ -61,10 +61,12 @@ export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess })
         const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
         console.log('PaymentForm - Parsed CardPointe payload:', data);
         
-        if (data.token) {
-          console.log('PaymentForm - Token received successfully:', data.token);
+        const token = data.token || data.message;
+        
+        if (token && !data.error && (!data.errorCode || data.errorCode === '0' || data.errorCode === 0)) {
+          console.log('PaymentForm - Token received successfully:', token);
           if (resolveTokenRef.current) {
-            resolveTokenRef.current(data.token);
+            resolveTokenRef.current(token);
             resolveTokenRef.current = null;
             rejectTokenRef.current = null;
           }
