@@ -9,7 +9,7 @@ export default {
     // 1. CORS Preflight & Headers Setup
     const corsHeaders = {
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Staff-Passcode",
       "Access-Control-Max-Age": "86400",
     };
 
@@ -46,10 +46,24 @@ export default {
       if (url.pathname === "/payment-link" && request.method === "GET") {
         return await handleGetLink(request, env, corsHeaders);
       } else if (url.pathname === "/create-link" && request.method === "POST") {
+        const passcode = request.headers.get("X-Staff-Passcode");
+        if (env.STAFF_PASSCODE && passcode !== env.STAFF_PASSCODE) {
+          return new Response(JSON.stringify({ message: "Unauthorized: Invalid or missing staff passcode" }), {
+            status: 401,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          });
+        }
         return await handleCreateLink(request, env, corsHeaders);
       } else if (url.pathname === "/charge" && request.method === "POST") {
         return await handleCharge(request, env, ctx, corsHeaders);
       } else if (url.pathname === "/analyze-invoice" && request.method === "POST") {
+        const passcode = request.headers.get("X-Staff-Passcode");
+        if (env.STAFF_PASSCODE && passcode !== env.STAFF_PASSCODE) {
+          return new Response(JSON.stringify({ message: "Unauthorized: Invalid or missing staff passcode" }), {
+            status: 401,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          });
+        }
         return await handleAnalyzeInvoice(request, env, corsHeaders);
       } else {
         return new Response(JSON.stringify({ message: "Not Found" }), {

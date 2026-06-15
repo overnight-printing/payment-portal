@@ -114,6 +114,10 @@ const ACCEPTED_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg
 const ACCEPTED_EXTENSIONS = ['.pdf', '.png', '.jpg', '.jpeg', '.webp'];
 
 export default function CreateLink() {
+  const [passcode, setPasscode] = useState(() => localStorage.getItem('staff_passcode') || '');
+  const [passcodeEntry, setPasscodeEntry] = useState('');
+  const [passcodeError, setPasscodeError] = useState(null);
+
   const [orderNumber, setOrderNumber] = useState('');
   const [amount, setAmount] = useState('');
   const [customerName, setCustomerName] = useState('');
@@ -176,9 +180,18 @@ export default function CreateLink() {
 
       const response = await fetch(`${API_BASE}/analyze-invoice`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Staff-Passcode': passcode
+        },
         body: requestBody,
       });
+
+      if (response.status === 401) {
+        localStorage.removeItem('staff_passcode');
+        setPasscode('');
+        throw new Error('Session expired or invalid passcode. Access denied.');
+      }
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
@@ -213,7 +226,77 @@ export default function CreateLink() {
       setScanMessage(err.message || 'Failed to analyze invoice. Please try again.');
       setTimeout(() => setScanStatus(null), 4000);
     }
-  }, [markAutofilled]);
+  }, [markAutofilled, passcode]);
+
+  const handleVerifyPasscode = async (e) => {
+    e.preventDefault();
+    setPasscodeError(null);
+    setIsLoading(true);
+
+    try {
+      // Test the passcode by calling analyze-invoice with an empty request
+      const res = await fetch(`${API_BASE}/analyze-invoice`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Staff-Passcode': passcodeEntry,
+        },
+        body: JSON.stringify({}),
+      });
+
+      if (res.status === 401) {
+        throw new Error('Invalid passcode. Please try again.');
+      }
+
+      // If it returned 400 (Bad Request / invalid JSON) or any other status, passcode is accepted!
+      localStorage.setItem('staff_passcode', passcodeEntry);
+      setPasscode(passcodeEntry);
+      setPasscodeError(null);
+    } catch (err) {
+      setPasscodeError(err.message || 'Passcode verification failed.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (!passcode) {
+    return (
+      <div className="passcode-container fade-in">
+        <div className="passcode-card">
+          <div className="passcode-logo-container">
+            <img src="/logo.png" alt="Overnight Printing Seattle" className="passcode-logo" />
+          </div>
+          <h2 className="passcode-title">Staff Portal</h2>
+          <p className="passcode-subtitle">Please enter the staff passcode to access this page.</p>
+          
+          {passcodeError && (
+            <div className="alert alert-error" style={{ marginBottom: '16px' }}>
+              <div>{passcodeError}</div>
+            </div>
+          )}
+
+          <form onSubmit={handleVerifyPasscode}>
+            <div className="form-group" style={{ textAlign: 'left' }}>
+              <label htmlFor="staffPasscode">Passcode</label>
+              <input
+                id="staffPasscode"
+                type="password"
+                required
+                value={passcodeEntry}
+                onChange={(e) => setPasscodeEntry(e.target.value)}
+                disabled={isLoading}
+                placeholder="••••••"
+                style={{ textAlign: 'center', letterSpacing: '0.2em' }}
+              />
+            </div>
+            <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '8px' }} disabled={isLoading}>
+              {isLoading ? 'Verifying...' : 'Access Portal'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   // Drag event handlers
   const handleDragEnter = (e) => {
@@ -263,7 +346,10 @@ export default function CreateLink() {
       const workerBase = API_BASE;
       const response = await fetch(`${workerBase}/create-link`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Staff-Passcode': passcode
+        },
         body: JSON.stringify({
           order_number: orderNumber,
           amount: parsedAmount.toFixed(2),
@@ -271,6 +357,12 @@ export default function CreateLink() {
           customer_email: customerEmail,
         }),
       });
+
+      if (response.status === 401) {
+        localStorage.removeItem('staff_passcode');
+        setPasscode('');
+        throw new Error('Session expired or invalid passcode. Access denied.');
+      }
 
       const data = await response.json();
 
@@ -309,6 +401,19 @@ export default function CreateLink() {
 
   return (
     <div className="card fade-in">
+      <div className="staff-header-actions">
+        <button
+          type="button"
+          className="btn-logout"
+          onClick={() => {
+            localStorage.removeItem('staff_passcode');
+            setPasscode('');
+            setPasscodeEntry('');
+          }}
+        >
+          🔒 Log Out Staff
+        </button>
+      </div>
       <div className="brand-logo-container">
         <img src="/logo.png" alt="Overnight Printing Seattle" className="brand-logo" />
       </div>

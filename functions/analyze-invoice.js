@@ -5,7 +5,7 @@
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Headers": "Content-Type, X-Staff-Passcode",
   "Content-Type": "application/json",
 };
 
@@ -117,6 +117,15 @@ function parseAiResponse(aiResponseText) {
 
 export async function onRequestPost(context) {
   const { request, env } = context;
+
+  // Enforce passcode check if STAFF_PASSCODE is set in the environment
+  const passcode = request.headers.get("X-Staff-Passcode");
+  if (env.STAFF_PASSCODE && passcode !== env.STAFF_PASSCODE) {
+    return new Response(JSON.stringify({ message: "Unauthorized: Invalid or missing staff passcode" }), {
+      status: 401,
+      headers: CORS_HEADERS,
+    });
+  }
 
   let body;
   try {
@@ -234,7 +243,7 @@ export async function onRequestOptions() {
     headers: {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
+      "Access-Control-Allow-Headers": "Content-Type, X-Staff-Passcode",
     },
   });
 }
