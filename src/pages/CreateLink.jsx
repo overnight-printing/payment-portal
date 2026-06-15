@@ -120,7 +120,6 @@ export default function CreateLink() {
 
   const [orderNumber, setOrderNumber] = useState('');
   const [amount, setAmount] = useState('');
-  const [jobDescription, setJobDescription] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
@@ -219,7 +218,6 @@ export default function CreateLink() {
       const filled = [];
       if (data.order_number) { setOrderNumber(data.order_number); filled.push('orderNumber'); }
       if (data.amount)       { setAmount(data.amount);             filled.push('amount'); }
-      if (data.job_description) { setJobDescription(data.job_description); filled.push('jobDescription'); }
       if (data.customer_name) { setCustomerName(data.customer_name); filled.push('customerName'); }
       if (data.company_name) { setCompanyName(data.company_name); filled.push('companyName'); }
       if (data.customer_email) { setCustomerEmail(data.customer_email); filled.push('customerEmail'); }
@@ -360,9 +358,6 @@ export default function CreateLink() {
       if (companyName) {
         combinedName += ` (${companyName})`;
       }
-      if (jobDescription) {
-        combinedName += ` [Job: ${jobDescription}]`;
-      }
 
       const workerBase = API_BASE;
       const response = await fetch(`${workerBase}/create-link`, {
@@ -405,7 +400,6 @@ export default function CreateLink() {
       setCustomerName('');
       setCompanyName('');
       setCustomerEmail('');
-      setJobDescription('');
       setAttachment(null);
     } catch (err) {
       setError(err.message);
@@ -593,19 +587,6 @@ export default function CreateLink() {
             onChange={(e) => setAmount(e.target.value)}
             disabled={isLoading}
             className={inputClass('amount')}
-          />
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="jobDescription">Job Description <span style={{ opacity: 0.5, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(Optional)</span></label>
-          <textarea
-            id="jobDescription"
-            rows="3"
-            value={jobDescription}
-            onChange={(e) => setJobDescription(e.target.value)}
-            disabled={isLoading}
-            className={inputClass('jobDescription')}
-            style={{ resize: 'vertical', minHeight: '80px', fontFamily: 'inherit' }}
           />
         </div>
 

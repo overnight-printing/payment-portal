@@ -71,17 +71,15 @@ export default function PaymentPage() {
     );
   }
 
-  // Parse out customer name, company name, and job description
+  // Parse out customer name and company name
   const customerNameRaw = paymentLink?.customer_name || '';
   let customerName = customerNameRaw;
   let companyName = '';
-  let jobDescription = '';
 
-  const match = customerNameRaw.match(/^(.*?)(?:\s*\((.*?)\))?(?:\s*\[Job:\s*(.*?)\])?$/);
+  const match = customerNameRaw.match(/^(.*?)(?:\s*\((.*?)\))?(?:\s*\[Job:[^\]]*\])?$/);
   if (match) {
     customerName = match[1] ? match[1].trim() : '';
     companyName = match[2] ? match[2].trim() : '';
-    jobDescription = match[3] ? match[3].trim() : '';
   }
 
   if (localPaid) {
@@ -124,12 +122,7 @@ export default function PaymentPage() {
                 <span className="receipt-value">{companyName}</span>
               </div>
             )}
-            {jobDescription && (
-              <div className="receipt-row">
-                <span className="receipt-label">Job Description</span>
-                <span className="receipt-value">{jobDescription}</span>
-              </div>
-            )}
+
             {retref && (
               <div className="receipt-row">
                 <span className="receipt-label">Ref Number</span>
@@ -172,12 +165,7 @@ export default function PaymentPage() {
             <span className="receipt-value">{companyName}</span>
           </div>
         )}
-        {jobDescription && (
-          <div className="receipt-row">
-            <span className="receipt-label">Job Description</span>
-            <span className="receipt-value">{jobDescription}</span>
-          </div>
-        )}
+
         <div className="receipt-row">
           <span className="receipt-label">Total Due</span>
           <span className="receipt-value">${parseFloat(paymentLink.amount).toFixed(2)} USD</span>

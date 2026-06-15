@@ -60,13 +60,11 @@ export async function onRequestPost(context) {
   const customerNameRaw = customer_name || '';
   let customerName = customerNameRaw;
   let companyName = '';
-  let jobDescription = '';
 
-  const nameMatch = customerNameRaw.match(/^(.*?)(?:\s*\((.*?)\))?(?:\s*\[Job:\s*(.*?)\])?$/);
+  const nameMatch = customerNameRaw.match(/^(.*?)(?:\s*\((.*?)\))?(?:\s*\[Job:[^\]]*\])?$/);
   if (nameMatch) {
     customerName = nameMatch[1] ? nameMatch[1].trim() : '';
     companyName = nameMatch[2] ? nameMatch[2].trim() : '';
-    jobDescription = nameMatch[3] ? nameMatch[3].trim() : '';
   }
 
   // 2. Email customer invoice link via Resend
@@ -96,12 +94,7 @@ export async function onRequestPost(context) {
               <td style="padding: 6px 0; font-weight: 600; text-align: right; border-top: 1px dashed #e5e7eb;">${companyName}</td>
             </tr>
             ` : ''}
-            ${jobDescription ? `
-            <tr>
-              <td style="padding: 6px 0; color: #6b7280; border-top: 1px dashed #e5e7eb;">Job Description:</td>
-              <td style="padding: 6px 0; font-weight: 600; text-align: right; border-top: 1px dashed #e5e7eb;">${jobDescription}</td>
-            </tr>
-            ` : ''}
+
             <tr>
               <td style="padding: 6px 0; color: #6b7280; border-top: 1px dashed #e5e7eb;">Amount Due:</td>
               <td style="padding: 6px 0; font-weight: 700; font-size: 18px; text-align: right; color: #111827; border-top: 1px dashed #e5e7eb;">$${parseFloat(amount).toFixed(2)} USD</td>

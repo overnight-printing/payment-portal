@@ -123,13 +123,11 @@ export async function onRequestPost(context) {
   const customerNameRaw = updatedRecord.customer_name || '';
   let customerName = customerNameRaw;
   let companyName = '';
-  let jobDescription = '';
 
-  const nameMatch = customerNameRaw.match(/^(.*?)(?:\s*\((.*?)\))?(?:\s*\[Job:\s*(.*?)\])?$/);
+  const nameMatch = customerNameRaw.match(/^(.*?)(?:\s*\((.*?)\))?(?:\s*\[Job:[^\]]*\])?$/);
   if (nameMatch) {
     customerName = nameMatch[1] ? nameMatch[1].trim() : '';
     companyName = nameMatch[2] ? nameMatch[2].trim() : '';
-    jobDescription = nameMatch[3] ? nameMatch[3].trim() : '';
   }
 
   // 4. Dispatch internal alert email asynchronously to overnight printing seattle staff
@@ -165,12 +163,7 @@ export async function onRequestPost(context) {
             <td style="padding: 8px 0; font-weight: 600;">${companyName}</td>
           </tr>
           ` : ''}
-          ${jobDescription ? `
-          <tr>
-            <td style="padding: 8px 0; color: #4b5563; font-weight: 500;">Job Description:</td>
-            <td style="padding: 8px 0; font-weight: 600;">${jobDescription}</td>
-          </tr>
-          ` : ''}
+
           <tr>
             <td style="padding: 8px 0; color: #4b5563; font-weight: 500;">Customer Email:</td>
             <td style="padding: 8px 0;"><a href="mailto:${updatedRecord.customer_email}">${updatedRecord.customer_email}</a></td>

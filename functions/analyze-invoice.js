@@ -24,9 +24,7 @@ function parseInvoiceText(text) {
   let company_name = "";
   let customer_email = "";
   let amount = "";
-
-  let inDescription = false;
-  let descLines = [];
+  let total = "";
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -64,7 +62,7 @@ function parseInvoiceText(text) {
       if (nonEmail[1]) company_name = nonEmail[1];
     }
 
-    // --- Amount Due ---
+    // --- Amount Due (primary) ---
     const sameLineAmount = line.match(/^AMOUNT DUE\s*\$?\s*([0-9.,]+)/i);
     if (sameLineAmount && !amount) {
       amount = sameLineAmount[1].replace(/[,\s]/g, "");
@@ -78,51 +76,25 @@ function parseInvoiceText(text) {
       }
     }
 
-    // --- Description / Job Details ---
-    if (/Description/i.test(line) && !inDescription) {
-      inDescription = true;
-      continue;
-    }
-
-    if (inDescription) {
-      if (/^(Customer Discount|SUBTOTAL|TAX|SHIPPING|TOTAL|AMOUNT DUE|Received by|Account Type:)/i.test(line)) {
-        inDescription = false;
-      } else {
-        const trimmed = line.trim();
-        if (trimmed) {
-          descLines.push(trimmed);
+    // --- TOTAL as fallback ---
+    const sameLineTotal = line.match(/^TOTAL\s*\$?\s*([0-9.,]+)/i);
+    if (sameLineTotal && !total) {
+      total = sameLineTotal[1].replace(/[,\s]/g, "");
+    } else if (/^TOTAL$/i.test(line) && !total) {
+      for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
+        const al = lines[j].trim();
+        if (al && al.startsWith("$")) {
+          total = al.replace(/[$,\s]/g, "").trim();
+          break;
         }
       }
     }
   }
 
-  // Clean up description lines
-  const cleanedDesc = descLines.map(l => {
-    let clean = l;
-    
-    // Match: [quantity] [description] [price] (e.g. "1,000   4 x 9 Stacy...   $ 266.62")
-    const fullMatch = clean.match(/^([0-9,]+)\s+(.*?)\s+(\$?\s*-?[0-9,]+\.[0-9]{2})$/);
-    if (fullMatch) {
-      clean = fullMatch[2];
-    } else {
-      // Match: [quantity] [description] (e.g. "10   Cut to 4 x 9")
-      const qtyMatch = clean.match(/^([0-9,]+)\s+(.*)$/);
-      if (qtyMatch && parseInt(qtyMatch[1].replace(/,/g, "")) < 100000) {
-        if (!/^x\s/i.test(qtyMatch[2])) {
-          clean = qtyMatch[2];
-        }
-      }
-    }
+  // Prefer AMOUNT DUE; fall back to TOTAL
+  const finalAmount = amount || total;
 
-    // Strip "Taken by" or "SUBTOTAL" garbage that gets merged onto the same line
-    clean = clean.replace(/\s*Taken by:\s*.*$/i, "");
-    clean = clean.replace(/\s*SUBTOTAL\s*.*$/i, "");
-    return clean.trim();
-  }).filter(l => l && !/^(Quantity|Description|Amount|Taken by:)$/i.test(l));
-
-  const job_description = cleanedDesc.join(", ");
-
-  return { order_number, amount, customer_name, company_name, customer_email, job_description };
+  return { order_number, amount: finalAmount, customer_name, company_name, customer_email };
 }
 
 /**
@@ -198,8 +170,8 @@ export async function onRequestPost(context) {
             {
               role: "system",
               content: `Extract invoice fields and return ONLY this JSON (empty string for missing):
-{"order_number":"","amount":"","customer_name":"","company_name":"","customer_email":"","job_description":""}
-Rules: order_number=digits only, amount=decimal only no $ or commas, no markdown, no explanation. Summarize the items or services printed under job_description.`,
+{"order_number":"","amount":"","customer_name":"","company_name":"","customer_email":""}
+Rules: order_number=digits only, amount=decimal only no $ or commas (use AMOUNT DUE or TOTAL), no markdown, no explanation.`,
             },
             { role: "user", content: `Invoice:\n\n${invoiceText}` },
           ],
@@ -212,7 +184,6 @@ Rules: order_number=digits only, amount=decimal only no $ or commas, no markdown
             customer_name: String(extracted.customer_name || "").trim(),
             company_name:  String(extracted.company_name || "").trim(),
             customer_email: String(extracted.customer_email || "").trim(),
-            job_description: String(extracted.job_description || "").trim(),
           }), { status: 200, headers: CORS_HEADERS });
         }
       } catch (err) {
@@ -242,8 +213,8 @@ Rules: order_number=digits only, amount=decimal only no $ or commas, no markdown
               {
                 type: "text",
                 text: `Extract invoice fields from this image and return ONLY this JSON (empty string for missing fields):
-{"order_number":"","amount":"","customer_name":"","company_name":"","customer_email":"","job_description":""}
-Rules: order_number=digits only, amount=decimal only no $ or commas (e.g. "252.20"), no markdown, no explanation. Summarize the items or services printed under job_description.`,
+{"order_number":"","amount":"","customer_name":"","company_name":"","customer_email":""}
+Rules: order_number=digits only, amount=decimal only no $ or commas (use AMOUNT DUE or TOTAL), no markdown, no explanation.`,
               },
               {
                 type: "image_url",
@@ -262,7 +233,6 @@ Rules: order_number=digits only, amount=decimal only no $ or commas (e.g. "252.2
           customer_name: String(extracted.customer_name || "").trim(),
           company_name:  String(extracted.company_name || "").trim(),
           customer_email: String(extracted.customer_email || "").trim(),
-          job_description: String(extracted.job_description || "").trim(),
         }), { status: 200, headers: CORS_HEADERS });
       }
 
