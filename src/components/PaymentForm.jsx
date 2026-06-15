@@ -12,9 +12,6 @@ export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess })
   const resolveTokenRef = useRef(null);
   const rejectTokenRef = useRef(null);
 
-  // Derive worker API base URL from env or fallback to localhost wrangler dev port
-  const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'http://localhost:8787';
-
   // Compute fixed iframe URL only once on mount to prevent the iframe from reloading
   // when component props or processing state changes (e.g. isProcessing toggling)
   const [iframeUrl] = useState(() => {
@@ -162,9 +159,9 @@ export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess })
         throw new Error('Failed to secure card token. Please verify card number.');
       }
 
-      // 3. Post charge request to Cloudflare Worker
-      console.log('PaymentForm - Sending /charge POST to Worker:', `${WORKER_URL}/charge`);
-      const response = await fetch(`${WORKER_URL}/charge`, {
+      // 3. Post charge request to Cloudflare Pages Function
+      console.log('PaymentForm - Sending /charge POST to Pages Function');
+      const response = await fetch('/charge', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

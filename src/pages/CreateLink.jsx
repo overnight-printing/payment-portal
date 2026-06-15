@@ -12,8 +12,6 @@ export default function CreateLink() {
   const [copied, setCopied] = useState(false);
 
   // Derive worker API base URL from env or fallback to localhost wrangler dev port
-  const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'http://localhost:8787';
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
@@ -32,7 +30,7 @@ export default function CreateLink() {
         throw new Error('Please enter a valid amount greater than 0.');
       }
 
-      const response = await fetch(`${WORKER_URL}/create-link`, {
+      const response = await fetch('/create-link', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

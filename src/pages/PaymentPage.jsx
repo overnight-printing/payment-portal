@@ -19,8 +19,7 @@ export default function PaymentPage() {
       }
 
       try {
-        const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'http://localhost:8787';
-        const response = await fetch(`${WORKER_URL}/payment-link?id=${id}`);
+        const response = await fetch(`/payment-link?id=${id}`);
         const data = await response.json();
 
         if (!response.ok) {
