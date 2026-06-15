@@ -74,7 +74,10 @@ export default function PaymentPage() {
   if (localPaid) {
     return (
       <div className="card fade-in" style={{ textAlign: 'center' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px 0' }}>
+        <div className="brand-logo-container">
+          <img src="/logo.png" alt="Overnight Printing Seattle" className="brand-logo" />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '10px 0' }}>
           <div style={{ 
             backgroundColor: 'var(--success-bg)', 
             color: 'var(--success)', 
@@ -123,6 +126,9 @@ export default function PaymentPage() {
 
   return (
     <div className="card fade-in">
+      <div className="brand-logo-container">
+        <img src="/logo.png" alt="Overnight Printing Seattle" className="brand-logo" />
+      </div>
       <h1>Complete Payment</h1>
       <p className="subtitle">Please review the printing invoice details below and securely pay with your card.</p>
 

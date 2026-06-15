@@ -78,6 +78,9 @@ export default function CreateLink() {
 
   return (
     <div className="card fade-in">
+      <div className="brand-logo-container">
+        <img src="/logo.png" alt="Overnight Printing Seattle" className="brand-logo" />
+      </div>
       <h1>Create Payment Link</h1>
       <p className="subtitle">Staff portal to generate secure custom checkout links for clients.</p>
 
