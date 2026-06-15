@@ -25,7 +25,7 @@ async function loadPdfJs() {
   });
 }
 
-// Extract all text from a PDF file as a single string
+// Extract all text from a PDF file as a single string, grouping by line height to preserve document structure
 async function extractTextFromPdf(arrayBuffer) {
   const pdfjsLib = await loadPdfJs();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -33,8 +33,50 @@ async function extractTextFromPdf(arrayBuffer) {
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
-    const strings = content.items.map((item) => item.str);
-    pages.push(strings.join(' '));
+    
+    const items = content.items.map(item => ({
+      str: item.str,
+      x: item.transform[4],
+      y: item.transform[5],
+      height: item.transform[3],
+    }));
+
+    if (items.length === 0) {
+      pages.push('');
+      continue;
+    }
+
+    // Sort by y descending (top of page first), then x ascending
+    items.sort((a, b) => b.y - a.y || a.x - b.x);
+
+    const lines = [];
+    let currentLine = [];
+    let lastY = null;
+
+    for (const item of items) {
+      if (lastY === null) {
+        currentLine.push(item);
+        lastY = item.y;
+      } else {
+        const yDiff = Math.abs(item.y - lastY);
+        const threshold = Math.max(5, item.height / 2);
+        if (yDiff <= threshold) {
+          currentLine.push(item);
+        } else {
+          currentLine.sort((a, b) => a.x - b.x);
+          lines.push(currentLine.map(it => it.str).join(' '));
+          currentLine = [item];
+          lastY = item.y;
+        }
+      }
+    }
+    
+    if (currentLine.length > 0) {
+      currentLine.sort((a, b) => a.x - b.x);
+      lines.push(currentLine.map(it => it.str).join(' '));
+    }
+
+    pages.push(lines.join('\n'));
   }
   return pages.join('\n');
 }
