@@ -12,23 +12,39 @@ const CORS_HEADERS = {
 // Prompt tuned specifically for Overnight Printing Seattle invoice format:
 //   - "No:" field = Invoice number (top right)
 //   - "Ship To:" section = customer name (first line), company name (second line), E-Mail:
-//   - "AMOUNT DUE" row = total amount to charge (bottom right table)
+//   - "AMOUNT DUE" row = total amount to charge (bottom right)
 const EXTRACTION_PROMPT = `You are an invoice data extraction tool for Overnight Printing Seattle.
 The invoices have this structure:
 - Top right area: "No:" followed by the invoice number (e.g. "56631")
 - "Ship To:" section: first line = customer full name, second line = company name, "E-Mail:" = customer email
 - Bottom right summary table: "AMOUNT DUE" row = the final total dollar amount
 
-Extract and return ONLY a single JSON object with exactly these keys (use empty string for missing fields):
+Return ONLY a single JSON object with exactly these keys (empty string for missing fields):
 {"order_number":"","amount":"","customer_name":"","company_name":"","customer_email":""}
 
 Rules:
-- order_number: digits only, no # or spaces
-- amount: decimal number only (e.g. "252.20"), no $ or commas
-- customer_name: full name as written
-- company_name: company/business name, empty string if none
-- customer_email: email address, empty string if not found
-Output ONLY the JSON object. No explanation. No markdown.`;
+- order_number: digits only, no # or spaces (e.g. "56631")
+- amount: decimal number only (e.g. "252.20"), no $ sign, no commas
+- customer_name: full name as written (e.g. "Jake Simpson")
+- company_name: company/business name, empty string if none (e.g. "WinPower Strategies")
+- customer_email: full email address, empty string if not found (e.g. "jake@winpowerstrategies.com")
+Output ONLY the JSON object. No explanation. No markdown. No extra text.`;
+
+/**
+ * Robustly extracts the text response from a Workers AI result object.
+ * Different models return different structures, so we handle all known formats.
+ */
+function extractText(result) {
+  if (typeof result === "string") return result;
+  // Standard Workers AI format (most models)
+  if (typeof result?.response === "string") return result.response;
+  // OpenAI-compatible chat format (llama-4-scout, newer models)
+  const choice = result?.choices?.[0];
+  if (typeof choice?.message?.content === "string") return choice.message.content;
+  if (typeof choice?.text === "string") return choice.text;
+  // Last resort: serialize the whole object so parseAndReturn can search it
+  return JSON.stringify(result);
+}
 
 export async function onRequestPost(context) {
   const { request, env } = context;
@@ -53,19 +69,23 @@ export async function onRequestPost(context) {
   // ── Image path ─────────────────────────────────────────────────────────────
   if (body.imageBase64) {
     try {
-      // Decode base64 → Uint8Array (proper typed array for Workers AI)
-      const binaryStr = atob(body.imageBase64);
-      const imageBytes = new Uint8Array(binaryStr.length);
-      for (let i = 0; i < binaryStr.length; i++) {
-        imageBytes[i] = binaryStr.charCodeAt(i);
-      }
-
+      // llama-4-scout-17b uses OpenAI-style multimodal messages with base64 data URLs
       const result = await env.AI.run("@cf/meta/llama-4-scout-17b-16e-instruct", {
-        prompt: EXTRACTION_PROMPT,
-        image: [...imageBytes], // Workers AI expects a plain number array
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: EXTRACTION_PROMPT },
+              {
+                type: "image_url",
+                image_url: { url: `data:image/jpeg;base64,${body.imageBase64}` },
+              },
+            ],
+          },
+        ],
       });
 
-      return parseAndReturn(result.response || "");
+      return parseAndReturn(extractText(result));
     } catch (err) {
       console.error("Vision model error:", err.name, err.message);
       return new Response(
@@ -87,7 +107,7 @@ export async function onRequestPost(context) {
         ],
       });
 
-      return parseAndReturn(result.response || "");
+      return parseAndReturn(extractText(result));
     } catch (err) {
       console.error("Text model error:", err.name, err.message);
       return new Response(
@@ -104,20 +124,20 @@ export async function onRequestPost(context) {
 }
 
 /**
- * Parses the AI model response string into a normalized invoice JSON response.
+ * Parses the AI model response string into a normalized invoice data object.
  */
-function parseAndReturn(aiResponse) {
+function parseAndReturn(aiResponseText) {
   // Strip markdown fences
-  const cleaned = aiResponse
+  const cleaned = String(aiResponseText)
     .replace(/```json\s*/gi, "")
     .replace(/```\s*/g, "")
     .trim();
 
   const jsonMatch = cleaned.match(/\{[\s\S]*?\}/);
   if (!jsonMatch) {
-    console.error("AI returned no parseable JSON. Raw response:", aiResponse);
+    console.error("AI returned no parseable JSON. Raw:", aiResponseText);
     return new Response(
-      JSON.stringify({ message: "AI could not extract structured data from invoice", raw: aiResponse }),
+      JSON.stringify({ message: "AI could not extract structured data from invoice", raw: aiResponseText }),
       { status: 422, headers: CORS_HEADERS }
     );
   }
@@ -134,9 +154,9 @@ function parseAndReturn(aiResponse) {
 
   const normalized = {
     order_number: String(extracted.order_number || "").replace(/\D/g, "").trim(),
-    amount: String(extracted.amount || "").replace(/[^0-9.]/g, "").trim(),
+    amount:       String(extracted.amount || "").replace(/[^0-9.]/g, "").trim(),
     customer_name: String(extracted.customer_name || "").trim(),
-    company_name: String(extracted.company_name || "").trim(),
+    company_name:  String(extracted.company_name || "").trim(),
     customer_email: String(extracted.customer_email || "").trim(),
   };
 
