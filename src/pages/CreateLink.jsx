@@ -120,9 +120,11 @@ export default function CreateLink() {
 
   const [orderNumber, setOrderNumber] = useState('');
   const [amount, setAmount] = useState('');
+  const [jobDescription, setJobDescription] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
+  const [attachment, setAttachment] = useState(null);
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -161,6 +163,18 @@ export default function CreateLink() {
 
     try {
       const buffer = await file.arrayBuffer();
+
+      // Read file to Base64 for Resend attachment
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = e.target.result;
+        const base64Content = result.split(',')[1];
+        setAttachment({
+          content: base64Content,
+          filename: file.name
+        });
+      };
+      reader.readAsDataURL(file);
 
       let requestBody;
 
@@ -205,6 +219,7 @@ export default function CreateLink() {
       const filled = [];
       if (data.order_number) { setOrderNumber(data.order_number); filled.push('orderNumber'); }
       if (data.amount)       { setAmount(data.amount);             filled.push('amount'); }
+      if (data.job_description) { setJobDescription(data.job_description); filled.push('jobDescription'); }
       if (data.customer_name) { setCustomerName(data.customer_name); filled.push('customerName'); }
       if (data.company_name) { setCompanyName(data.company_name); filled.push('companyName'); }
       if (data.customer_email) { setCustomerEmail(data.customer_email); filled.push('customerEmail'); }
@@ -340,8 +355,14 @@ export default function CreateLink() {
         throw new Error('Please enter a valid amount greater than 0.');
       }
 
-      // Combine customer and company name into the customer_name column to preserve DB schema
-      const combinedName = companyName ? `${customerName} (${companyName})` : customerName;
+      // Combine customer, company name, and job description into customer_name column to preserve DB schema
+      let combinedName = customerName;
+      if (companyName) {
+        combinedName += ` (${companyName})`;
+      }
+      if (jobDescription) {
+        combinedName += ` [Job: ${jobDescription}]`;
+      }
 
       const workerBase = API_BASE;
       const response = await fetch(`${workerBase}/create-link`, {
@@ -355,6 +376,7 @@ export default function CreateLink() {
           amount: parsedAmount.toFixed(2),
           customer_name: combinedName,
           customer_email: customerEmail,
+          attachment: attachment,
         }),
       });
 
@@ -383,6 +405,8 @@ export default function CreateLink() {
       setCustomerName('');
       setCompanyName('');
       setCustomerEmail('');
+      setJobDescription('');
+      setAttachment(null);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -471,6 +495,41 @@ export default function CreateLink() {
         )}
       </div>
 
+      {/* ---- Attachment Pill ---- */}
+      {attachment && (
+        <div className="attachment-pill" style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          background: 'rgba(30, 47, 102, 0.05)',
+          border: '1px dashed rgba(30, 47, 102, 0.2)',
+          padding: '8px 12px',
+          borderRadius: '8px',
+          marginBottom: '16px',
+          fontSize: '14px',
+        }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span>📎</span>
+            <strong style={{ color: 'var(--navy)' }}>{attachment.filename}</strong>
+            <span style={{ opacity: 0.6 }}>(Invoice attached)</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => setAttachment(null)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--error)',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              padding: '0 4px',
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       <div className="form-divider">or fill in manually</div>
 
       {error && (
@@ -534,6 +593,19 @@ export default function CreateLink() {
             onChange={(e) => setAmount(e.target.value)}
             disabled={isLoading}
             className={inputClass('amount')}
+          />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="jobDescription">Job Description <span style={{ opacity: 0.5, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(Optional)</span></label>
+          <textarea
+            id="jobDescription"
+            rows="3"
+            value={jobDescription}
+            onChange={(e) => setJobDescription(e.target.value)}
+            disabled={isLoading}
+            className={inputClass('jobDescription')}
+            style={{ resize: 'vertical', minHeight: '80px', fontFamily: 'inherit' }}
           />
         </div>
 

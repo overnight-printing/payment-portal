@@ -170,7 +170,7 @@ export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess })
         console.log('PaymentForm - Token promise resolved! Token:', token);
       } catch (tokenErr) {
         console.error('PaymentForm - requestCardToken() promise rejected:', tokenErr);
-        throw new Error('Failed to secure card token. Please verify card number.');
+        throw new Error('Failed to secure card token. Please verify card number.', { cause: tokenErr });
       }
 
       // 3. Post charge request to Cloudflare Pages Function

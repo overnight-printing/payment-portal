@@ -16,7 +16,7 @@ export async function onRequestPost(context) {
     });
   }
 
-  const { order_number, amount, customer_name, customer_email } = await request.json();
+  const { order_number, amount, customer_name, customer_email, attachment } = await request.json();
 
   if (!order_number || !amount || !customer_name || !customer_email) {
     return new Response(JSON.stringify({ message: "Missing required fields" }), {
@@ -56,15 +56,17 @@ export async function onRequestPost(context) {
 
   const baseDomain = new URL(request.url).origin;
   const paymentLinkUrl = `${baseDomain}/pay/${uuid}`;
-  // Parse customer name and company name
+  // Parse customer name, company name, and job description
   const customerNameRaw = customer_name || '';
   let customerName = customerNameRaw;
   let companyName = '';
+  let jobDescription = '';
 
-  const nameMatch = customerNameRaw.match(/^(.*?)\s*\((.*?)\)$/);
+  const nameMatch = customerNameRaw.match(/^(.*?)(?:\s*\((.*?)\))?(?:\s*\[Job:\s*(.*?)\])?$/);
   if (nameMatch) {
-    customerName = nameMatch[1];
-    companyName = nameMatch[2];
+    customerName = nameMatch[1] ? nameMatch[1].trim() : '';
+    companyName = nameMatch[2] ? nameMatch[2].trim() : '';
+    jobDescription = nameMatch[3] ? nameMatch[3].trim() : '';
   }
 
   // 2. Email customer invoice link via Resend
@@ -94,6 +96,12 @@ export async function onRequestPost(context) {
               <td style="padding: 6px 0; font-weight: 600; text-align: right; border-top: 1px dashed #e5e7eb;">${companyName}</td>
             </tr>
             ` : ''}
+            ${jobDescription ? `
+            <tr>
+              <td style="padding: 6px 0; color: #6b7280; border-top: 1px dashed #e5e7eb;">Job Description:</td>
+              <td style="padding: 6px 0; font-weight: 600; text-align: right; border-top: 1px dashed #e5e7eb;">${jobDescription}</td>
+            </tr>
+            ` : ''}
             <tr>
               <td style="padding: 6px 0; color: #6b7280; border-top: 1px dashed #e5e7eb;">Amount Due:</td>
               <td style="padding: 6px 0; font-weight: 700; font-size: 18px; text-align: right; color: #111827; border-top: 1px dashed #e5e7eb;">$${parseFloat(amount).toFixed(2)} USD</td>
@@ -117,6 +125,15 @@ export async function onRequestPost(context) {
     `,
   };
 
+  if (attachment && attachment.content && attachment.filename) {
+    resendEmailBody.attachments = [
+      {
+        content: attachment.content,
+        filename: attachment.filename,
+      }
+    ];
+  }
+
   const resendRes = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -132,7 +149,7 @@ export async function onRequestPost(context) {
   });
 }
 
-export async function onRequestOptions(context) {
+export async function onRequestOptions() {
   return new Response(null, {
     status: 204,
     headers: {

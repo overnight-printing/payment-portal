@@ -71,15 +71,17 @@ export default function PaymentPage() {
     );
   }
 
-  // Parse out customer name and company name if they are in the format "Customer Name (Company Name)"
+  // Parse out customer name, company name, and job description
   const customerNameRaw = paymentLink?.customer_name || '';
   let customerName = customerNameRaw;
   let companyName = '';
+  let jobDescription = '';
 
-  const match = customerNameRaw.match(/^(.*?)\s*\((.*?)\)$/);
+  const match = customerNameRaw.match(/^(.*?)(?:\s*\((.*?)\))?(?:\s*\[Job:\s*(.*?)\])?$/);
   if (match) {
-    customerName = match[1];
-    companyName = match[2];
+    customerName = match[1] ? match[1].trim() : '';
+    companyName = match[2] ? match[2].trim() : '';
+    jobDescription = match[3] ? match[3].trim() : '';
   }
 
   if (localPaid) {
@@ -122,6 +124,12 @@ export default function PaymentPage() {
                 <span className="receipt-value">{companyName}</span>
               </div>
             )}
+            {jobDescription && (
+              <div className="receipt-row">
+                <span className="receipt-label">Job Description</span>
+                <span className="receipt-value">{jobDescription}</span>
+              </div>
+            )}
             {retref && (
               <div className="receipt-row">
                 <span className="receipt-label">Ref Number</span>
@@ -162,6 +170,12 @@ export default function PaymentPage() {
           <div className="receipt-row">
             <span className="receipt-label">Company Name</span>
             <span className="receipt-value">{companyName}</span>
+          </div>
+        )}
+        {jobDescription && (
+          <div className="receipt-row">
+            <span className="receipt-label">Job Description</span>
+            <span className="receipt-value">{jobDescription}</span>
           </div>
         )}
         <div className="receipt-row">

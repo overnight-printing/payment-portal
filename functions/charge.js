@@ -119,15 +119,17 @@ export async function onRequestPost(context) {
   const records = await supabaseRes.json();
   const updatedRecord = records[0];
 
-  // Parse customer name and company name
+  // Parse customer name, company name, and job description
   const customerNameRaw = updatedRecord.customer_name || '';
   let customerName = customerNameRaw;
   let companyName = '';
+  let jobDescription = '';
 
-  const nameMatch = customerNameRaw.match(/^(.*?)\s*\((.*?)\)$/);
+  const nameMatch = customerNameRaw.match(/^(.*?)(?:\s*\((.*?)\))?(?:\s*\[Job:\s*(.*?)\])?$/);
   if (nameMatch) {
-    customerName = nameMatch[1];
-    companyName = nameMatch[2];
+    customerName = nameMatch[1] ? nameMatch[1].trim() : '';
+    companyName = nameMatch[2] ? nameMatch[2].trim() : '';
+    jobDescription = nameMatch[3] ? nameMatch[3].trim() : '';
   }
 
   // 4. Dispatch internal alert email asynchronously to overnight printing seattle staff
@@ -161,6 +163,12 @@ export async function onRequestPost(context) {
           <tr>
             <td style="padding: 8px 0; color: #4b5563; font-weight: 500;">Company Name:</td>
             <td style="padding: 8px 0; font-weight: 600;">${companyName}</td>
+          </tr>
+          ` : ''}
+          ${jobDescription ? `
+          <tr>
+            <td style="padding: 8px 0; color: #4b5563; font-weight: 500;">Job Description:</td>
+            <td style="padding: 8px 0; font-weight: 600;">${jobDescription}</td>
           </tr>
           ` : ''}
           <tr>
@@ -200,7 +208,7 @@ export async function onRequestPost(context) {
   });
 }
 
-export async function onRequestOptions(context) {
+export async function onRequestOptions() {
   return new Response(null, {
     status: 204,
     headers: {

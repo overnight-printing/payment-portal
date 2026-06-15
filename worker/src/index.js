@@ -142,7 +142,7 @@ async function handleGetLink(request, env, corsHeaders) {
  * Handles creating a payment link record in Supabase and emailing the link via Resend.
  */
 async function handleCreateLink(request, env, corsHeaders) {
-  const { order_number, amount, customer_name, customer_email } = await request.json();
+  const { order_number, amount, customer_name, customer_email, attachment } = await request.json();
 
   if (!order_number || !amount || !customer_name || !customer_email) {
     return new Response(JSON.stringify({ message: "Missing required fields" }), {
@@ -185,6 +185,19 @@ async function handleCreateLink(request, env, corsHeaders) {
   const createdRecord = records[0];
   const uuid = createdRecord.id;
 
+  // Parse customer name, company name, and job description
+  const customerNameRaw = customer_name || '';
+  let customerName = customerNameRaw;
+  let companyName = '';
+  let jobDescription = '';
+
+  const nameMatch = customerNameRaw.match(/^(.*?)(?:\s*\((.*?)\))?(?:\s*\[Job:\s*(.*?)\])?$/);
+  if (nameMatch) {
+    customerName = nameMatch[1] ? nameMatch[1].trim() : '';
+    companyName = nameMatch[2] ? nameMatch[2].trim() : '';
+    jobDescription = nameMatch[3] ? nameMatch[3].trim() : '';
+  }
+
   // 2. Send client email via Resend
   const isLocal = request.headers.get("Origin")?.includes("localhost");
   const baseDomain = isLocal ? request.headers.get("Origin") : "https://pay.overnightprintingseattle.com";
@@ -197,7 +210,7 @@ async function handleCreateLink(request, env, corsHeaders) {
     html: `
       <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e1e8; border-radius: 16px; background-color: #ffffff; color: #1f2937;">
         <h2 style="color: #6d28d9; margin-top: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.02em;">Invoice Payment Request</h2>
-        <p style="font-size: 16px; line-height: 1.5; color: #4b5563;">Hello ${customer_name},</p>
+        <p style="font-size: 16px; line-height: 1.5; color: #4b5563;">Hello ${customerName},</p>
         <p style="font-size: 16px; line-height: 1.5; color: #4b5563;">A secure payment link has been created for your print order with Overnight Printing Seattle.</p>
         
         <div style="background-color: #f3f4f6; border-radius: 12px; padding: 20px; margin: 24px 0;">
@@ -206,6 +219,18 @@ async function handleCreateLink(request, env, corsHeaders) {
               <td style="padding: 6px 0; color: #6b7280;">Order Number:</td>
               <td style="padding: 6px 0; font-weight: 600; text-align: right;">#${order_number}</td>
             </tr>
+            ${companyName ? `
+            <tr>
+              <td style="padding: 6px 0; color: #6b7280; border-top: 1px dashed #e5e7eb;">Company Name:</td>
+              <td style="padding: 6px 0; font-weight: 600; text-align: right; border-top: 1px dashed #e5e7eb;">${companyName}</td>
+            </tr>
+            ` : ''}
+            ${jobDescription ? `
+            <tr>
+              <td style="padding: 6px 0; color: #6b7280; border-top: 1px dashed #e5e7eb;">Job Description:</td>
+              <td style="padding: 6px 0; font-weight: 600; text-align: right; border-top: 1px dashed #e5e7eb;">${jobDescription}</td>
+            </tr>
+            ` : ''}
             <tr>
               <td style="padding: 6px 0; color: #6b7280; border-top: 1px dashed #e5e7eb;">Amount Due:</td>
               <td style="padding: 6px 0; font-weight: 700; font-size: 18px; text-align: right; color: #111827; border-top: 1px dashed #e5e7eb;">$${parseFloat(amount).toFixed(2)} USD</td>
@@ -228,6 +253,15 @@ async function handleCreateLink(request, env, corsHeaders) {
       </div>
     `,
   };
+
+  if (attachment && attachment.content && attachment.filename) {
+    resendEmailBody.attachments = [
+      {
+        content: attachment.content,
+        filename: attachment.filename,
+      }
+    ];
+  }
 
   const resendRes = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -373,15 +407,17 @@ async function handleCharge(request, env, ctx, corsHeaders) {
   const records = await supabaseRes.json();
   const updatedRecord = records[0];
 
-  // Parse customer name and company name
+  // Parse customer name, company name, and job description
   const customerNameRaw = updatedRecord.customer_name || '';
   let customerName = customerNameRaw;
   let companyName = '';
+  let jobDescription = '';
 
-  const nameMatch = customerNameRaw.match(/^(.*?)\s*\((.*?)\)$/);
+  const nameMatch = customerNameRaw.match(/^(.*?)(?:\s*\((.*?)\))?(?:\s*\[Job:\s*(.*?)\])?$/);
   if (nameMatch) {
-    customerName = nameMatch[1];
-    companyName = nameMatch[2];
+    customerName = nameMatch[1] ? nameMatch[1].trim() : '';
+    companyName = nameMatch[2] ? nameMatch[2].trim() : '';
+    jobDescription = nameMatch[3] ? nameMatch[3].trim() : '';
   }
 
   // 3. Send Internal Notification Email to staff via Resend
@@ -415,6 +451,12 @@ async function handleCharge(request, env, ctx, corsHeaders) {
           <tr>
             <td style="padding: 8px 0; color: #4b5563; font-weight: 500;">Company Name:</td>
             <td style="padding: 8px 0; font-weight: 600;">${companyName}</td>
+          </tr>
+          ` : ''}
+          ${jobDescription ? `
+          <tr>
+            <td style="padding: 8px 0; color: #4b5563; font-weight: 500;">Job Description:</td>
+            <td style="padding: 8px 0; font-weight: 600;">${jobDescription}</td>
           </tr>
           ` : ''}
           <tr>
@@ -483,6 +525,9 @@ function parseInvoiceText(text) {
   let customer_email = "";
   let amount = "";
 
+  let inDescription = false;
+  let descLines = [];
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
@@ -532,9 +577,52 @@ function parseInvoiceText(text) {
         }
       }
     }
+
+    // --- Description / Job Details ---
+    if (/Description/i.test(line) && !inDescription) {
+      inDescription = true;
+      continue;
+    }
+
+    if (inDescription) {
+      if (/^(Customer Discount|SUBTOTAL|TAX|SHIPPING|TOTAL|AMOUNT DUE|Received by|Account Type:)/i.test(line)) {
+        inDescription = false;
+      } else {
+        const trimmed = line.trim();
+        if (trimmed) {
+          descLines.push(trimmed);
+        }
+      }
+    }
   }
 
-  return { order_number, amount, customer_name, company_name, customer_email };
+  // Clean up description lines
+  const cleanedDesc = descLines.map(l => {
+    let clean = l;
+    
+    // Match: [quantity] [description] [price] (e.g. "1,000   4 x 9 Stacy...   $ 266.62")
+    const fullMatch = clean.match(/^([0-9,]+)\s+(.*?)\s+(\$?\s*-?[0-9,]+\.[0-9]{2})$/);
+    if (fullMatch) {
+      clean = fullMatch[2];
+    } else {
+      // Match: [quantity] [description] (e.g. "10   Cut to 4 x 9")
+      const qtyMatch = clean.match(/^([0-9,]+)\s+(.*)$/);
+      if (qtyMatch && parseInt(qtyMatch[1].replace(/,/g, "")) < 100000) {
+        if (!/^x\s/i.test(qtyMatch[2])) {
+          clean = qtyMatch[2];
+        }
+      }
+    }
+
+    // Strip "Taken by" or "SUBTOTAL" garbage that gets merged onto the same line
+    clean = clean.replace(/\s*Taken by:\s*.*$/i, "");
+    clean = clean.replace(/\s*SUBTOTAL\s*.*$/i, "");
+    return clean.trim();
+  }).filter(l => l && !/^(Quantity|Description|Amount|Taken by:)$/i.test(l));
+
+  const job_description = cleanedDesc.join(", ");
+
+  return { order_number, amount, customer_name, company_name, customer_email, job_description };
 }
 
 /**
@@ -605,8 +693,8 @@ async function handleAnalyzeInvoice(request, env, corsHeaders) {
                 {
                   role: "system",
                   content: `Extract invoice fields and return ONLY this JSON (empty string for missing):
-{"order_number":"","amount":"","customer_name":"","company_name":"","customer_email":""}
-Rules: order_number=digits only, amount=decimal only no $ or commas, no markdown, no explanation.`,
+{"order_number":"","amount":"","customer_name":"","company_name":"","customer_email":"","job_description":""}
+Rules: order_number=digits only, amount=decimal only no $ or commas, no markdown, no explanation. Summarize the items or services printed under job_description.`,
                 },
                 { role: "user", content: `Invoice:\n\n${invoiceText}` },
               ],
@@ -619,6 +707,7 @@ Rules: order_number=digits only, amount=decimal only no $ or commas, no markdown
                 customer_name: String(extracted.customer_name || "").trim(),
                 company_name:  String(extracted.company_name || "").trim(),
                 customer_email: String(extracted.customer_email || "").trim(),
+                job_description: String(extracted.job_description || "").trim(),
               };
               return new Response(JSON.stringify(normalized), {
                 status: 200,
@@ -654,8 +743,8 @@ Rules: order_number=digits only, amount=decimal only no $ or commas, no markdown
                 {
                   type: "text",
                   text: `Extract invoice fields from this image and return ONLY this JSON (empty string for missing fields):
-{"order_number":"","amount":"","customer_name":"","company_name":"","customer_email":""}
-Rules: order_number=digits only, amount=decimal only no $ or commas (e.g. "252.20"), no markdown, no explanation.`,
+{"order_number":"","amount":"","customer_name":"","company_name":"","customer_email":"","job_description":""}
+Rules: order_number=digits only, amount=decimal only no $ or commas (e.g. "252.20"), no markdown, no explanation. Summarize the items or services printed under job_description.`,
                 },
                 {
                   type: "image_url",
@@ -674,6 +763,7 @@ Rules: order_number=digits only, amount=decimal only no $ or commas (e.g. "252.2
             customer_name: String(extracted.customer_name || "").trim(),
             company_name:  String(extracted.company_name || "").trim(),
             customer_email: String(extracted.customer_email || "").trim(),
+            job_description: String(extracted.job_description || "").trim(),
           };
           return new Response(JSON.stringify(normalized), {
             status: 200,
@@ -712,8 +802,8 @@ Rules: order_number=digits only, amount=decimal only no $ or commas (e.g. "252.2
               {
                 type: "text",
                 text: `Extract invoice fields from this image and return ONLY this JSON (empty string for missing fields):
-{"order_number":"","amount":"","customer_name":"","company_name":"","customer_email":""}
-Rules: order_number=digits only, amount=decimal only no $ or commas (e.g. "252.20"), no markdown, no explanation.`,
+{"order_number":"","amount":"","customer_name":"","company_name":"","customer_email":"","job_description":""}
+Rules: order_number=digits only, amount=decimal only no $ or commas (e.g. "252.20"), no markdown, no explanation. Summarize the items or services printed under job_description.`,
               },
               {
                 type: "image_url",
@@ -732,6 +822,7 @@ Rules: order_number=digits only, amount=decimal only no $ or commas (e.g. "252.2
           customer_name: String(extracted.customer_name || "").trim(),
           company_name:  String(extracted.company_name || "").trim(),
           customer_email: String(extracted.customer_email || "").trim(),
+          job_description: String(extracted.job_description || "").trim(),
         };
         return new Response(JSON.stringify(normalized), {
           status: 200,
