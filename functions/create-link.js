@@ -69,11 +69,14 @@ export async function onRequestPost(context) {
 
   // 2. Email customer invoice link via Resend
   const resendEmailBody = {
-    from: "Overnight Printing Seattle <billing@overnightprintingseattle.com>",
+    from: "Overnight Printing Seattle <accounting@overnightprintingseattle.com>",
     to: [customer_email],
     subject: `Invoice Payment Request: Invoice #${order_number}`,
     html: `
       <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e1e8; border-radius: 16px; background-color: #ffffff; color: #1f2937;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <img src="https://pay.overnightprintingseattle.com/logo.png" alt="Overnight Printing Seattle" style="max-height: 60px; width: auto;" />
+        </div>
         <h2 style="color: #1e2f66; margin-top: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.02em;">Invoice Payment Request</h2>
         <p style="font-size: 16px; line-height: 1.5; color: #4b5563;">Hello ${customerName},</p>
         ${companyName ? `<p style="font-size: 16px; line-height: 1.5; color: #4b5563;">A secure payment link has been created for ${companyName} print order with Overnight Printing Seattle.</p>` : `<p style="font-size: 16px; line-height: 1.5; color: #4b5563;">A secure payment link has been created for your print order with Overnight Printing Seattle.</p>`}
@@ -103,7 +106,7 @@ export async function onRequestPost(context) {
         </div>
         
         <div style="text-align: center; margin: 32px 0;">
-          <a href="${paymentLinkUrl}" style="background-color: #1e2f66; color: #ffffff; padding: 14px 28px; text-decoration: none; font-weight: 600; font-size: 16px; border-radius: 10px; display: inline-block;">Pay Invoice Securely</a>
+          <a href="${paymentLinkUrl}" style="background-color: #1e2f66; color: #ffffff; padding: 14px 28px; text-decoration: none; font-weight: 600; font-size: 16px; border-radius: 10px; display: inline-block;">Pay Invoice</a>
         </div>
         
         <p style="font-size: 13px; color: #9ca3af; text-align: center; margin-bottom: 0;">
