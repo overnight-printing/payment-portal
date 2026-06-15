@@ -1,0 +1,11 @@
+name = "payment-portal-worker"
+main = "src/index.js"
+compatibility_date = "2024-03-18"
+
+# Environment Variables & Secrets required (to be added via Wrangler CLI or Cloudflare Dashboard):
+# - CARDPOINTE_USER
+# - CARDPOINTE_PASS
+# - CARDPOINTE_MID
+# - SUPABASE_URL
+# - SUPABASE_SERVICE_ROLE_KEY
+# - RESEND_API_KEY

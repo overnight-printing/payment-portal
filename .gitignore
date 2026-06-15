@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+.env
+
+# Cloudflare Worker secrets and caches
+.dev.vars
+.wrangler/
+worker/.dev.vars
+worker/.wrangler/
