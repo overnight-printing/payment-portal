@@ -138,8 +138,8 @@ export async function onRequestPost(context) {
   });
 
   const staffEmailBody = {
-    from: "Billing Alerts <billing@overnightprintingseattle.com>",
-    to: ["contact@overnightprintingseattle.com"],
+    from: "Billing Alerts <accounting@overnightprintingseattle.com>",
+    to: ["accounting@overnightprintingseattle.com"],
     subject: `[Paid] Invoice #${updatedRecord.order_number} - $${parseFloat(amount).toFixed(2)}`,
     html: `
       <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e1e8; border-radius: 12px; background-color: #f9fafb; color: #111827;">

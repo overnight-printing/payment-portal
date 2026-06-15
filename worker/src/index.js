@@ -53,7 +53,7 @@ export default {
             headers: { "Content-Type": "application/json", ...corsHeaders },
           });
         }
-        return await handleCreateLink(request, env, corsHeaders);
+        return await handleCreateLink(request, env, ctx, corsHeaders);
       } else if (url.pathname === "/charge" && request.method === "POST") {
         return await handleCharge(request, env, ctx, corsHeaders);
       } else if (url.pathname === "/analyze-invoice" && request.method === "POST") {
@@ -141,7 +141,7 @@ async function handleGetLink(request, env, corsHeaders) {
 /**
  * Handles creating a payment link record in Supabase and emailing the link via Resend.
  */
-async function handleCreateLink(request, env, corsHeaders) {
+async function handleCreateLink(request, env, ctx, corsHeaders) {
   const { order_number, amount, customer_name, customer_email, attachment, attachments } = await request.json();
 
   if (!order_number || !amount || !customer_name || !customer_email) {
@@ -274,10 +274,64 @@ async function handleCreateLink(request, env, corsHeaders) {
     body: JSON.stringify(resendEmailBody),
   });
 
-  if (!resendRes.ok) {
+  const emailSent = resendRes.ok;
+
+  if (emailSent) {
+    const confirmationEmailBody = {
+      from: "Overnight Printing Seattle <accounting@overnightprintingseattle.com>",
+      to: ["accounting@overnightprintingseattle.com"],
+      subject: `[Sent] Invoice Payment Link Created - Invoice #${order_number}`,
+      html: `
+        <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e1e8; border-radius: 12px; background-color: #f9fafb; color: #111827;">
+          <h2 style="color: #1e2f66; margin-top: 0; font-size: 20px; font-weight: 700; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px;">Invoice Link Sent (Internal Confirmation)</h2>
+          <p style="font-size: 14px; color: #4b5563; line-height: 1.5;">A payment link has been generated and emailed to the customer successfully.</p>
+          <table style="width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 15px;">
+            <tr>
+              <td style="padding: 8px 0; color: #4b5563; font-weight: 500;">Invoice Number(s):</td>
+              <td style="padding: 8px 0; font-weight: 600;">#${order_number}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #4b5563; font-weight: 500;">Total Amount:</td>
+              <td style="padding: 8px 0; font-weight: 700; color: #1e2f66; font-size: 16px;">$${parseFloat(amount).toFixed(2)} USD</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #4b5563; font-weight: 500;">Customer Name:</td>
+              <td style="padding: 8px 0;">${customerName}</td>
+            </tr>
+            ${companyName ? `
+            <tr>
+              <td style="padding: 8px 0; color: #4b5563; font-weight: 500;">Company Name:</td>
+              <td style="padding: 8px 0; font-weight: 600;">${companyName}</td>
+            </tr>
+            ` : ''}
+            <tr>
+              <td style="padding: 8px 0; color: #4b5563; font-weight: 500;">Customer Email:</td>
+              <td style="padding: 8px 0;"><a href="mailto:${customer_email}" style="color: #1e2f66; text-decoration: none;">${customer_email}</a></td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #4b5563; font-weight: 500; border-top: 1px dashed #d1d5db;">Payment Link URL:</td>
+              <td style="padding: 8px 0; border-top: 1px dashed #d1d5db;"><a href="${paymentLinkUrl}" style="color: #1e2f66; text-decoration: none; word-break: break-all;">${paymentLinkUrl}</a></td>
+            </tr>
+          </table>
+        </div>
+      `,
+    };
+
+    ctx.waitUntil(
+      fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${env.RESEND_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(confirmationEmailBody),
+      }).catch(err => console.error("Async confirmation email failed:", err))
+    );
+  }
+
+  if (!emailSent) {
     const resendErr = await resendRes.text();
     console.error("Resend API error:", resendErr);
-    // We will still return the ID so the staff member can manually copy the link if the email API fails
     return new Response(
       JSON.stringify({ 
         id: uuid, 
@@ -428,8 +482,8 @@ async function handleCharge(request, env, ctx, corsHeaders) {
   });
 
   const staffEmailBody = {
-    from: "Billing Alerts <billing@overnightprintingseattle.com>",
-    to: ["contact@overnightprintingseattle.com"],
+    from: "Billing Alerts <accounting@overnightprintingseattle.com>",
+    to: ["accounting@overnightprintingseattle.com"],
     subject: `[Paid] Invoice #${updatedRecord.order_number} - $${parseFloat(amount).toFixed(2)}`,
     html: `
       <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e1e8; border-radius: 12px; background-color: #f9fafb; color: #111827;">
