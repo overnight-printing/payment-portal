@@ -39,6 +39,35 @@ async function extractTextFromPdf(arrayBuffer) {
   return pages.join('\n');
 }
 
+// Resize + compress an image File/Blob to max 1500px wide, JPEG quality 0.85
+// Returns base64 string (without the data:...;base64, prefix)
+async function compressImageToBase64(arrayBuffer, mimeType) {
+  return new Promise((resolve, reject) => {
+    const blob = new Blob([arrayBuffer], { type: mimeType || 'image/png' });
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      const MAX_WIDTH = 1500;
+      let { width, height } = img;
+      if (width > MAX_WIDTH) {
+        height = Math.round((height * MAX_WIDTH) / width);
+        width = MAX_WIDTH;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      URL.revokeObjectURL(url);
+      // Export as JPEG for smaller payload; strip the data URL prefix
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      resolve(dataUrl.replace(/^data:image\/jpeg;base64,/, ''));
+    };
+    img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+    img.src = url;
+  });
+}
+
 const ACCEPTED_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
 const ACCEPTED_EXTENSIONS = ['.pdf', '.png', '.jpg', '.jpeg', '.webp'];
 
@@ -96,12 +125,10 @@ export default function CreateLink() {
         setScanMessage('Analyzing invoice with AI...');
         requestBody = JSON.stringify({ text });
       } else {
-        // Image: convert to base64 and send as JSON { imageBase64 }
+        // Image: compress client-side then send as base64 JSON
+        setScanMessage('Compressing image...');
+        const imageBase64 = await compressImageToBase64(buffer, file.type);
         setScanMessage('Analyzing invoice image with AI...');
-        const uint8 = new Uint8Array(buffer);
-        let binary = '';
-        for (let i = 0; i < uint8.length; i++) binary += String.fromCharCode(uint8[i]);
-        const imageBase64 = btoa(binary);
         requestBody = JSON.stringify({ imageBase64 });
       }
 
@@ -113,7 +140,8 @@ export default function CreateLink() {
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.message || `Server error: ${response.status}`);
+        // Surface the real server error so staff can see what went wrong
+        throw new Error(errData.error || errData.message || `Server error ${response.status}`);
       }
 
       const data = await response.json();

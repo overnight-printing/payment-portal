@@ -1,7 +1,7 @@
 // Cloudflare Pages Function: POST /analyze-invoice
 // Uses Cloudflare Workers AI to extract structured invoice data from text or image.
-// Requires the AI binding to be configured in the Cloudflare Pages project settings:
-//   Dashboard -> Pages -> {project} -> Settings -> Functions -> AI Bindings -> Add binding (Variable: AI)
+// Requires the AI binding configured in Cloudflare Pages project:
+//   Dashboard -> Pages -> {project} -> Settings -> Functions -> Workers AI Bindings (Variable: AI)
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -10,24 +10,25 @@ const CORS_HEADERS = {
 };
 
 // Prompt tuned specifically for Overnight Printing Seattle invoice format:
-//   - "No:" field = Invoice number
+//   - "No:" field = Invoice number (top right)
 //   - "Ship To:" section = customer name (first line), company name (second line), E-Mail:
-//   - "AMOUNT DUE" row = final amount to charge
-const SYSTEM_PROMPT = `You are a precise invoice data extraction assistant for Overnight Printing Seattle.
-Extract the following fields from the provided invoice. The invoices have this structure:
-- Top right: "No:" followed by the invoice number (e.g. "No: 56631")
-- "Ship To:" section contains: first line = customer full name, second line = company name, "E-Mail:" = email address
-- Bottom right summary table: look for "AMOUNT DUE" row for the total amount to charge
+//   - "AMOUNT DUE" row = total amount to charge (bottom right table)
+const EXTRACTION_PROMPT = `You are an invoice data extraction tool for Overnight Printing Seattle.
+The invoices have this structure:
+- Top right area: "No:" followed by the invoice number (e.g. "56631")
+- "Ship To:" section: first line = customer full name, second line = company name, "E-Mail:" = customer email
+- Bottom right summary table: "AMOUNT DUE" row = the final total dollar amount
 
-Extract these fields:
-- order_number: The invoice number after "No:" (string, digits only, no # prefix)
-- amount: The value on the "AMOUNT DUE" row (decimal string, digits and dot only, no $ or commas)
-- customer_name: The customer's full name from the "Ship To:" section (first line after "Ship To:")
-- company_name: The company name from the "Ship To:" section (second line, if present)
-- customer_email: The email address from the "E-Mail:" field in "Ship To:"
+Extract and return ONLY a single JSON object with exactly these keys (use empty string for missing fields):
+{"order_number":"","amount":"","customer_name":"","company_name":"","customer_email":""}
 
-Respond ONLY with a valid JSON object, no explanation, no markdown:
-{"order_number":"","amount":"","customer_name":"","company_name":"","customer_email":""}`;
+Rules:
+- order_number: digits only, no # or spaces
+- amount: decimal number only (e.g. "252.20"), no $ or commas
+- customer_name: full name as written
+- company_name: company/business name, empty string if none
+- customer_email: email address, empty string if not found
+Output ONLY the JSON object. No explanation. No markdown.`;
 
 export async function onRequestPost(context) {
   const { request, env } = context;
@@ -39,82 +40,110 @@ export async function onRequestPost(context) {
     );
   }
 
-  let aiResponse = "";
-
+  let body;
   try {
-    const body = await request.json();
+    body = await request.json();
+  } catch (e) {
+    return new Response(
+      JSON.stringify({ message: "Invalid JSON body", error: e.message }),
+      { status: 400, headers: CORS_HEADERS }
+    );
+  }
 
-    let result;
-
-    if (body.imageBase64) {
-      // Image invoice: convert base64 back to byte array for the vision model
+  // ── Image path ─────────────────────────────────────────────────────────────
+  if (body.imageBase64) {
+    try {
+      // Decode base64 → Uint8Array (proper typed array for Workers AI)
       const binaryStr = atob(body.imageBase64);
-      const imageBytes = new Array(binaryStr.length);
+      const imageBytes = new Uint8Array(binaryStr.length);
       for (let i = 0; i < binaryStr.length; i++) {
         imageBytes[i] = binaryStr.charCodeAt(i);
       }
 
-      result = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
-        prompt: `${SYSTEM_PROMPT}\n\nExtract the invoice data from this invoice image.`,
-        image: imageBytes,
+      const result = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
+        prompt: EXTRACTION_PROMPT,
+        image: [...imageBytes], // Workers AI expects a plain number array
       });
-    } else if (body.text) {
-      // Text PDF invoice: use the text LLM
-      const invoiceText = String(body.text).substring(0, 8000);
 
-      result = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
+      return parseAndReturn(result.response || "");
+    } catch (err) {
+      console.error("Vision model error:", err.name, err.message);
+      return new Response(
+        JSON.stringify({ message: "Image analysis failed", error: `${err.name}: ${err.message}` }),
+        { status: 500, headers: CORS_HEADERS }
+      );
+    }
+  }
+
+  // ── Text (PDF) path ─────────────────────────────────────────────────────────
+  if (body.text) {
+    try {
+      const invoiceText = String(body.text).substring(0, 6000);
+
+      const result = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: `Extract the invoice data from the following invoice text:\n\n${invoiceText}` },
+          { role: "system", content: EXTRACTION_PROMPT },
+          { role: "user", content: `Invoice text to extract from:\n\n${invoiceText}` },
         ],
       });
-    } else {
+
+      return parseAndReturn(result.response || "");
+    } catch (err) {
+      console.error("Text model error:", err.name, err.message);
       return new Response(
-        JSON.stringify({ message: "Request body must include either 'text' or 'imageBase64'" }),
-        { status: 400, headers: CORS_HEADERS }
+        JSON.stringify({ message: "Text analysis failed", error: `${err.name}: ${err.message}` }),
+        { status: 500, headers: CORS_HEADERS }
       );
     }
+  }
 
-    aiResponse = result.response || "";
+  return new Response(
+    JSON.stringify({ message: "Body must include 'imageBase64' or 'text'" }),
+    { status: 400, headers: CORS_HEADERS }
+  );
+}
 
-    // Strip markdown fences in case the model added them
-    const cleaned = aiResponse
-      .replace(/```json\s*/gi, "")
-      .replace(/```\s*/g, "")
-      .trim();
+/**
+ * Parses the AI model response string into a normalized invoice JSON response.
+ */
+function parseAndReturn(aiResponse) {
+  // Strip markdown fences
+  const cleaned = aiResponse
+    .replace(/```json\s*/gi, "")
+    .replace(/```\s*/g, "")
+    .trim();
 
-    // Find the first JSON object in the response
-    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      console.error("AI returned no parseable JSON:", aiResponse);
-      return new Response(
-        JSON.stringify({ message: "AI could not parse the invoice", raw: aiResponse }),
-        { status: 422, headers: CORS_HEADERS }
-      );
-    }
-
-    const extracted = JSON.parse(jsonMatch[0]);
-
-    const normalized = {
-      order_number: String(extracted.order_number || "").trim(),
-      // Strip everything except digits and decimal point from the amount
-      amount: String(extracted.amount || "").replace(/[^0-9.]/g, "").trim(),
-      customer_name: String(extracted.customer_name || "").trim(),
-      company_name: String(extracted.company_name || "").trim(),
-      customer_email: String(extracted.customer_email || "").trim(),
-    };
-
-    return new Response(JSON.stringify(normalized), {
-      status: 200,
-      headers: CORS_HEADERS,
-    });
-  } catch (err) {
-    console.error("analyze-invoice error:", err);
+  const jsonMatch = cleaned.match(/\{[\s\S]*?\}/);
+  if (!jsonMatch) {
+    console.error("AI returned no parseable JSON. Raw response:", aiResponse);
     return new Response(
-      JSON.stringify({ message: "Invoice analysis failed", error: err.message }),
-      { status: 500, headers: CORS_HEADERS }
+      JSON.stringify({ message: "AI could not extract structured data from invoice", raw: aiResponse }),
+      { status: 422, headers: CORS_HEADERS }
     );
   }
+
+  let extracted;
+  try {
+    extracted = JSON.parse(jsonMatch[0]);
+  } catch (parseErr) {
+    return new Response(
+      JSON.stringify({ message: "Failed to parse AI JSON output", raw: jsonMatch[0] }),
+      { status: 422, headers: CORS_HEADERS }
+    );
+  }
+
+  const normalized = {
+    order_number: String(extracted.order_number || "").replace(/\D/g, "").trim(),
+    amount: String(extracted.amount || "").replace(/[^0-9.]/g, "").trim(),
+    customer_name: String(extracted.customer_name || "").trim(),
+    company_name: String(extracted.company_name || "").trim(),
+    customer_email: String(extracted.customer_email || "").trim(),
+  };
+
+  return new Response(JSON.stringify(normalized), {
+    status: 200,
+    headers: CORS_HEADERS,
+  });
 }
 
 export async function onRequestOptions() {
