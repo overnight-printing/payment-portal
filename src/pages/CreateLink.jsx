@@ -1,12 +1,8 @@
 import { useState, useRef, useCallback } from 'react';
 
-// Worker URL - in production this is the Cloudflare Worker, in dev it's localhost:8787
-const getWorkerUrl = () => {
-  if (window.location.hostname === 'localhost') {
-    return import.meta.env.VITE_WORKER_URL || 'http://localhost:8787';
-  }
-  return ''; // Cloudflare Pages Functions act as same-origin proxy in production
-};
+// All API calls go to same-origin Cloudflare Pages Functions.
+// In local dev, Wrangler serves both the Pages Functions and the static assets on the same port.
+const API_BASE = '';
 
 // Dynamically load PDF.js from CDN on first use
 let pdfJsLoaded = false;
@@ -89,31 +85,31 @@ export default function CreateLink() {
     setScanMessage('Reading invoice...');
 
     try {
-      const workerBase = getWorkerUrl();
       const buffer = await file.arrayBuffer();
 
-      let response;
+      let requestBody;
 
       if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
-        // Text PDF: extract text client-side, send as JSON
+        // Text PDF: extract text client-side, send as JSON { text }
         setScanMessage('Extracting text from PDF...');
         const text = await extractTextFromPdf(buffer);
         setScanMessage('Analyzing invoice with AI...');
-
-        response = await fetch(`${workerBase}/analyze-invoice`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text }),
-        });
+        requestBody = JSON.stringify({ text });
       } else {
-        // Image: send raw bytes, let vision model process
+        // Image: convert to base64 and send as JSON { imageBase64 }
         setScanMessage('Analyzing invoice image with AI...');
-        response = await fetch(`${workerBase}/analyze-invoice`, {
-          method: 'POST',
-          headers: { 'Content-Type': file.type || 'image/png' },
-          body: buffer,
-        });
+        const uint8 = new Uint8Array(buffer);
+        let binary = '';
+        for (let i = 0; i < uint8.length; i++) binary += String.fromCharCode(uint8[i]);
+        const imageBase64 = btoa(binary);
+        requestBody = JSON.stringify({ imageBase64 });
       }
+
+      const response = await fetch(`${API_BASE}/analyze-invoice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: requestBody,
+      });
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
@@ -194,7 +190,7 @@ export default function CreateLink() {
       // Combine customer and company name into the customer_name column to preserve DB schema
       const combinedName = companyName ? `${customerName} (${companyName})` : customerName;
 
-      const workerBase = getWorkerUrl();
+      const workerBase = API_BASE;
       const response = await fetch(`${workerBase}/create-link`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
