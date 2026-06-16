@@ -48,7 +48,7 @@ function parseInvoiceText(text) {
       for (let j = i + 1; j < Math.min(i + 8, lines.length); j++) {
         const sl = lines[j].trim();
         if (!sl) continue;
-        if (/^(Quantity|Description|Amount|Taken by)$/i.test(sl)) break;
+        if (/^(Quantity|Description|Amount|Taken by)/i.test(sl) || /Quantity.*Description/i.test(sl)) break;
         shipLines.push(sl);
       }
 
