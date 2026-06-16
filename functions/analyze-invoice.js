@@ -58,8 +58,20 @@ function parseInvoiceText(text) {
       }
 
       const nonEmail = shipLines.filter(l => !l.toLowerCase().includes("e-mail:") && !l.toLowerCase().includes("email:"));
-      if (nonEmail[0]) customer_name = nonEmail[0];
-      if (nonEmail[1]) company_name = nonEmail[1];
+      
+      const isPhoneNumber = (str) => {
+        const digitCount = (str.match(/\d/g) || []).length;
+        if (digitCount >= 7) {
+          const stripped = str.replace(/[\d\s\-\(\)\+\.]/g, '');
+          if (stripped.length <= 2) return true;
+        }
+        return false;
+      };
+
+      const nameLines = nonEmail.filter(l => !isPhoneNumber(l) && !/phone:/i.test(l) && !/tel:/i.test(l));
+
+      if (nameLines[0]) customer_name = nameLines[0];
+      if (nameLines[1]) company_name = nameLines[1];
     }
 
     // --- Amount Due (primary) ---
@@ -171,7 +183,7 @@ export async function onRequestPost(context) {
               role: "system",
               content: `Extract invoice fields and return ONLY this JSON (empty string for missing):
 {"order_number":"","amount":"","customer_name":"","company_name":"","customer_email":""}
-Rules: order_number=digits only, amount=decimal only no $ or commas (use AMOUNT DUE or TOTAL), no markdown, no explanation.`,
+Rules: order_number=digits only, amount=decimal only no $ or commas (use AMOUNT DUE or TOTAL), do NOT put phone numbers in company_name, no markdown, no explanation.`,
             },
             { role: "user", content: `Invoice:\n\n${invoiceText}` },
           ],
@@ -214,7 +226,7 @@ Rules: order_number=digits only, amount=decimal only no $ or commas (use AMOUNT 
                 type: "text",
                 text: `Extract invoice fields from this image and return ONLY this JSON (empty string for missing fields):
 {"order_number":"","amount":"","customer_name":"","company_name":"","customer_email":""}
-Rules: order_number=digits only, amount=decimal only no $ or commas (use AMOUNT DUE or TOTAL), no markdown, no explanation.`,
+Rules: order_number=digits only, amount=decimal only no $ or commas (use AMOUNT DUE or TOTAL), do NOT put phone numbers in company_name, no markdown, no explanation.`,
               },
               {
                 type: "image_url",
