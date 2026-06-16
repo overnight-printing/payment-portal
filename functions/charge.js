@@ -137,12 +137,14 @@ export async function onRequestPost(context) {
     timeStyle: "medium",
   });
 
-  // Determine card brand and last 4 from token (CardPointe tokens are format-preserving)
+  // Determine card brand from CardPointe response (fallback to Credit Card)
   let cardBrand = "Credit Card";
-  if (token.startsWith("4")) cardBrand = "Visa";
-  else if (token.startsWith("5")) cardBrand = "Mastercard";
-  else if (token.startsWith("3")) cardBrand = "Amex";
-  else if (token.startsWith("6")) cardBrand = "Discover";
+  if (cpResult && cpResult.bintype) {
+    cardBrand = cpResult.bintype; // e.g., "Mastercard", "Visa", "Discover", "Amex"
+  } else if (cpResult && cpResult.brand) {
+    cardBrand = cpResult.brand;
+  }
+
   
   const last4 = token.length >= 4 ? token.slice(-4) : "****";
 
