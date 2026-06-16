@@ -286,7 +286,10 @@ async function handleCreateLink(request, env, ctx, corsHeaders) {
         subject: `[Sent] Invoice Payment Link Created - Invoice #${order_number}`,
         html: `
           <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e1e8; border-radius: 12px; background-color: #f9fafb; color: #111827;">
-            <h2 style="color: #1e2f66; margin-top: 0; font-size: 20px; font-weight: 700; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px;">Invoice Link Sent (Internal Confirmation)</h2>
+            <div style="text-align: center; margin-bottom: 24px;">
+              <img src="https://pay.overnightprintingseattle.com/logo.png" alt="Overnight Printing Seattle" style="max-height: 60px; width: auto;" />
+            </div>
+            <h2 style="color: #1e2f66; margin-top: 0; font-size: 20px; font-weight: 700; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px;">Invoice Link Sent</h2>
             <p style="font-size: 14px; color: #4b5563; line-height: 1.5;">A payment link has been generated and emailed to the customer successfully.</p>
             <table style="width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 15px;">
               <tr>
@@ -485,13 +488,25 @@ async function handleCharge(request, env, ctx, corsHeaders) {
     timeStyle: "medium",
   });
 
+  // Determine card brand and last 4 from token (CardPointe tokens are format-preserving)
+  let cardBrand = "Credit Card";
+  if (token.startsWith("4")) cardBrand = "Visa";
+  else if (token.startsWith("5")) cardBrand = "Mastercard";
+  else if (token.startsWith("3")) cardBrand = "Amex";
+  else if (token.startsWith("6")) cardBrand = "Discover";
+  
+  const last4 = token.length >= 4 ? token.slice(-4) : "****";
+
   const staffEmailBody = {
     from: "Billing Alerts <accounting@overnightprintingseattle.com>",
     to: ["accounting@overnightprintingseattle.com", "contact@overnightprintingseattle.com"],
     subject: `[Paid] Invoice #${updatedRecord.order_number} - $${parseFloat(amount).toFixed(2)}`,
     html: `
       <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e1e8; border-radius: 12px; background-color: #f9fafb; color: #111827;">
-        <h2 style="color: #059669; margin-top: 0; font-size: 20px; font-weight: 700; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px;">Payment Completion Alert (Internal)</h2>
+        <div style="text-align: center; margin-bottom: 24px;">
+          <img src="https://pay.overnightprintingseattle.com/logo.png" alt="Overnight Printing Seattle" style="max-height: 60px; width: auto;" />
+        </div>
+        <h2 style="color: #059669; margin-top: 0; font-size: 20px; font-weight: 700; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px;">Payment Completion Alert</h2>
         <table style="width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 15px;">
           <tr>
             <td style="padding: 8px 0; color: #4b5563; font-weight: 500;">Invoice Number:</td>
@@ -500,6 +515,10 @@ async function handleCharge(request, env, ctx, corsHeaders) {
           <tr>
             <td style="padding: 8px 0; color: #4b5563; font-weight: 500;">Amount Paid:</td>
             <td style="padding: 8px 0; font-weight: 700; color: #059669; font-size: 16px;">$${parseFloat(amount).toFixed(2)} USD</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0; color: #4b5563; font-weight: 500;">Payment Method:</td>
+            <td style="padding: 8px 0; font-weight: 600;">${cardBrand} ending in ${last4}</td>
           </tr>
           <tr>
             <td style="padding: 8px 0; color: #4b5563; font-weight: 500;">Customer Name:</td>
