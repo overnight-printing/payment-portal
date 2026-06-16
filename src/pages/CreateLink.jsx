@@ -124,6 +124,8 @@ export default function CreateLink() {
   const [companyName, setCompanyName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [uploadedInvoices, setUploadedInvoices] = useState([]);
+  const [sendEmailFlag, setSendEmailFlag] = useState(true);
+  const [lastLinkWasEmailed, setLastLinkWasEmailed] = useState(true);
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -414,6 +416,9 @@ export default function CreateLink() {
         .filter(inv => inv.status === 'success' && inv.attachment)
         .map(inv => inv.attachment);
 
+      // Keep track of the emailing mode for the success alert display
+      setLastLinkWasEmailed(sendEmailFlag);
+
       const workerBase = API_BASE;
       const response = await fetch(`${workerBase}/create-link`, {
         method: 'POST',
@@ -428,6 +433,7 @@ export default function CreateLink() {
           customer_email: customerEmail,
           attachment: attachmentsPayload[0] || null, // backwards compatibility
           attachments: attachmentsPayload,
+          send_email: sendEmailFlag,
         }),
       });
 
@@ -644,7 +650,9 @@ export default function CreateLink() {
             <strong style={{ fontSize: '15px' }}>Payment Link Generated!</strong>
           </div>
           <p style={{ fontSize: '13px', marginBottom: '12px', opacity: 0.9 }}>
-            An email containing this link has been automatically sent to the customer.
+            {lastLinkWasEmailed 
+              ? 'An email containing this link has been automatically sent to the customer.'
+              : 'Payment link generated! Copy the link below to share manually.'}
           </p>
           <div className="copy-block">
             <input
@@ -728,16 +736,34 @@ export default function CreateLink() {
           />
         </div>
 
-        <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '10px' }} disabled={isLoading}>
-          {isLoading ? (
-            <>
-              <div className="spinner"></div>
-              <span>Generating Link...</span>
-            </>
-          ) : (
-            'Generate & Send Link'
-          )}
-        </button>
+        <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+          <button
+            type="submit"
+            className="btn btn-secondary"
+            style={{ flex: 1, padding: '12px 16px', background: 'rgba(30, 47, 102, 0.05)', color: 'var(--navy)', border: '1px solid rgba(30, 47, 102, 0.2)' }}
+            onClick={() => setSendEmailFlag(false)}
+            disabled={isLoading}
+          >
+            {isLoading && !sendEmailFlag ? (
+              <div className="spinner" style={{ borderTopColor: 'var(--navy)', margin: '0 auto' }}></div>
+            ) : (
+              'Generate Link Only'
+            )}
+          </button>
+          <button
+            type="submit"
+            className="btn btn-primary"
+            style={{ flex: 1, padding: '12px 16px' }}
+            onClick={() => setSendEmailFlag(true)}
+            disabled={isLoading}
+          >
+            {isLoading && sendEmailFlag ? (
+              <div className="spinner" style={{ margin: '0 auto' }}></div>
+            ) : (
+              'Generate & Send Email'
+            )}
+          </button>
+        </div>
       </form>
     </div>
   );
