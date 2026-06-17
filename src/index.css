@@ -20,31 +20,11 @@
 
   font: 16px/150% var(--sans);
   letter-spacing: -0.01em;
-  color-scheme: light dark;
+  color-scheme: light;
   color: var(--text);
   background: var(--bg);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #94a3b8;
-    --text-h: #f1f5f9;
-    --bg: #0f172a;
-    --card-bg: #1e293b;
-    --border: #334155;
-    --input-bg: #0f172a;
-    --accent: #6caee0; /* Accent Light Blue from the logo for dark mode readability */
-    --accent-hover: #8fc2e9;
-    --accent-bg: #1e293b;
-    --accent-border: #334155;
-    --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
-    --success: #34d399;
-    --success-bg: rgba(52, 211, 153, 0.1);
-    --error: #f87171;
-    --error-bg: rgba(248, 113, 113, 0.1);
-  }
 }
 
 body {
@@ -56,12 +36,6 @@ body {
   min-height: 100vh;
   background-image: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
   background-attachment: fixed;
-}
-
-@media (prefers-color-scheme: dark) {
-  body {
-    background-image: linear-gradient(135deg, #0b0f19 0%, #0f172a 100%);
-  }
 }
 
 #root {

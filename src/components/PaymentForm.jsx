@@ -16,9 +16,9 @@ export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess })
   // Compute fixed iframe URL only once on mount to prevent the iframe from reloading
   // when component props or processing state changes (e.g. isProcessing toggling)
   const [iframeUrl] = useState(() => {
-    const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const textColor = isDark ? '#f4f4f5' : '#0f0b21';
-    const placeholderColor = isDark ? '#52525b' : '#a1a1aa';
+    // Always use light mode theme colors for the secure input iframe
+    const textColor = '#0f0b21';
+    const placeholderColor = '#a1a1aa';
     
     // Safely write standard CSS and encode it via encodeURIComponent to prevent tokenizer script errors
     const cssStyle = `
@@ -37,7 +37,8 @@ export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess })
       }
     `;
     
-    const url = `https://fts.cardconnect.com/itoke/ajax-tokenizer.html?css=${encodeURIComponent(cssStyle)}`;
+    // formatinput=true formats the card number with spaces as the user types (supports Amex/Visa/MC layouts)
+    const url = `https://fts.cardconnect.com/itoke/ajax-tokenizer.html?formatinput=true&css=${encodeURIComponent(cssStyle)}`;
     console.log('PaymentForm - Computed Static iframe URL:', url);
     return url;
   });
