@@ -371,9 +371,56 @@ async function handleCharge(request, env, ctx, corsHeaders) {
     });
   }
 
+  // 0.5 Verify invoice amount and status against Database securely
+  const verifyRes = await fetch(`${env.SUPABASE_URL}/rest/v1/payment_links?id=eq.${paymentLinkId}`, {
+    method: "GET",
+    headers: {
+      "apikey": env.SUPABASE_SERVICE_ROLE_KEY,
+      "Authorization": `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!verifyRes.ok) {
+    return new Response(JSON.stringify({ message: "Failed to verify invoice details with the database." }), {
+      status: 500,
+      headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
+  }
+
+  const verifyRecords = await verifyRes.json();
+  if (!verifyRecords || verifyRecords.length === 0) {
+    return new Response(JSON.stringify({ message: "Invoice not found or expired." }), {
+      status: 404,
+      headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
+  }
+
+  const invoice = verifyRecords[0];
+
+  // Prevent double charging
+  if (invoice.status === "paid") {
+    return new Response(JSON.stringify({ message: "This invoice has already been paid." }), {
+      status: 400,
+      headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
+  }
+
+  // Prevent amount tampering
+  const dbAmount = parseFloat(invoice.amount);
+  const reqAmount = parseFloat(amount);
+  if (Math.abs(dbAmount - reqAmount) > 0.01) {
+    console.error(`Worker - Amount mismatch! DB: ${dbAmount}, Request: ${reqAmount}`);
+    return new Response(JSON.stringify({ message: "Payment amount mismatch detected. Please refresh the page and try again." }), {
+      status: 400,
+      headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
+  }
+
   // 1. Process with CardPointe
   let cpResult;
-  const isMockPayment = env.MOCK_PAYMENT === "true" || amount === "0.07" || parseFloat(amount) === 0.07;
+  // Security Fix: Removed the hardcoded 0.07 backdoor. Only allow mock if explicitly enabled in ENV.
+  const isMockPayment = env.MOCK_PAYMENT === "true";
 
   if (isMockPayment) {
     console.log("Worker - Mock payment mode triggered. Bypassing CardPointe Gateway.");
