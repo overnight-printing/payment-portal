@@ -362,7 +362,7 @@ async function handleCreateLink(request, env, ctx, corsHeaders) {
  * Handles charging the tokenized card via CardPointe and updating the Supabase state + notifying internal staff.
  */
 async function handleCharge(request, env, ctx, corsHeaders) {
-  const { token, amount, expiry, cvv2, zip, paymentLinkId } = await request.json();
+  const { token, amount, expiry, cvv2, zip, paymentLinkId, frontendBrand } = await request.json();
 
   if (!token || !amount || !expiry || !cvv2 || !zip || !paymentLinkId) {
     return new Response(JSON.stringify({ message: "Missing transaction parameters" }), {
@@ -504,6 +504,15 @@ async function handleCharge(request, env, ctx, corsHeaders) {
     }
   }
   
+  // Override with frontend validation if backend detection failed or returned generic
+  if (frontendBrand && frontendBrand !== "Credit Card") {
+    const fbUpper = frontendBrand.toUpperCase();
+    if (fbUpper.includes("VISA")) cardBrand = "Visa";
+    else if (fbUpper.includes("MASTER") || fbUpper === "MC") cardBrand = "Mastercard";
+    else if (fbUpper.includes("AMEX") || fbUpper.includes("AMERICAN")) cardBrand = "Amex";
+    else if (fbUpper.includes("DISCOVER")) cardBrand = "Discover";
+  }
+
   // Override arbitrary strings like "Corp" or "Business" if the token prefix matches a known brand
   if (token) {
     if (token.startsWith("4")) cardBrand = "Visa";

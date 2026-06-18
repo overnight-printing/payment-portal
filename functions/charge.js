@@ -29,7 +29,7 @@ export async function onRequestPost(context) {
     );
   }
 
-  const { token, amount, expiry, cvv2, zip, paymentLinkId } = await request.json();
+  const { token, amount, expiry, cvv2, zip, paymentLinkId, frontendBrand } = await request.json();
 
   if (!token || !amount || !expiry || !cvv2 || !zip || !paymentLinkId) {
     return new Response(JSON.stringify({ message: "Missing transaction parameters" }), {
@@ -151,6 +151,15 @@ export async function onRequestPost(context) {
         cardBrand = "Credit Card"; // Fallback to a generic string instead of displaying "Corp"
       }
     }
+  }
+
+  // Override with frontend validation if backend detection failed or returned generic
+  if (frontendBrand && frontendBrand !== "Credit Card") {
+    const fbUpper = frontendBrand.toUpperCase();
+    if (fbUpper.includes("VISA")) cardBrand = "Visa";
+    else if (fbUpper.includes("MASTER") || fbUpper === "MC") cardBrand = "Mastercard";
+    else if (fbUpper.includes("AMEX") || fbUpper.includes("AMERICAN")) cardBrand = "Amex";
+    else if (fbUpper.includes("DISCOVER")) cardBrand = "Discover";
   }
 
   // Override arbitrary strings like "Corp" if the token prefix matches a known brand
