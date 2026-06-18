@@ -504,7 +504,8 @@ async function handleCharge(request, env, ctx, corsHeaders) {
     }
   }
   
-  if (cardBrand === "Credit Card") {
+  // Override arbitrary strings like "Corp" or "Business" if the token prefix matches a known brand
+  if (token) {
     if (token.startsWith("4")) cardBrand = "Visa";
     else if (token.startsWith("5")) cardBrand = "Mastercard";
     else if (token.startsWith("3")) cardBrand = "Amex";

@@ -153,7 +153,14 @@ export async function onRequestPost(context) {
     }
   }
 
-  
+  // Override arbitrary strings like "Corp" if the token prefix matches a known brand
+  if (token) {
+    if (token.startsWith("4")) cardBrand = "Visa";
+    else if (token.startsWith("5")) cardBrand = "Mastercard";
+    else if (token.startsWith("3")) cardBrand = "Amex";
+    else if (token.startsWith("6")) cardBrand = "Discover";
+  }
+
   const last4 = token.length >= 4 ? token.slice(-4) : "****";
 
   const staffEmailBody = {
