@@ -488,12 +488,28 @@ async function handleCharge(request, env, ctx, corsHeaders) {
     timeStyle: "medium",
   });
 
-  // Determine card brand and last 4 from token (CardPointe tokens are format-preserving)
+  // Determine card brand from CardPointe response (prioritize brand/network over bintype, fallback to token prefix)
   let cardBrand = "Credit Card";
-  if (token.startsWith("4")) cardBrand = "Visa";
-  else if (token.startsWith("5")) cardBrand = "Mastercard";
-  else if (token.startsWith("3")) cardBrand = "Amex";
-  else if (token.startsWith("6")) cardBrand = "Discover";
+  if (cpResult) {
+    const rawBrand = cpResult.brand || cpResult.bintype;
+    if (rawBrand) {
+      const brandUpper = rawBrand.toUpperCase().trim();
+      if (brandUpper === "VISA") cardBrand = "Visa";
+      else if (brandUpper === "MASTERCARD" || brandUpper === "MC") cardBrand = "Mastercard";
+      else if (brandUpper === "AMEX" || brandUpper === "AMERICAN EXPRESS") cardBrand = "Amex";
+      else if (brandUpper === "DISCOVER") cardBrand = "Discover";
+      else {
+        cardBrand = brandUpper.charAt(0) + brandUpper.slice(1).toLowerCase();
+      }
+    }
+  }
+  
+  if (cardBrand === "Credit Card") {
+    if (token.startsWith("4")) cardBrand = "Visa";
+    else if (token.startsWith("5")) cardBrand = "Mastercard";
+    else if (token.startsWith("3")) cardBrand = "Amex";
+    else if (token.startsWith("6")) cardBrand = "Discover";
+  }
   
   const last4 = token.length >= 4 ? token.slice(-4) : "****";
 

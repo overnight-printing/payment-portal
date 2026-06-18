@@ -137,12 +137,20 @@ export async function onRequestPost(context) {
     timeStyle: "medium",
   });
 
-  // Determine card brand from CardPointe response (fallback to Credit Card)
+  // Determine card brand from CardPointe response (prioritize brand/network over bintype)
   let cardBrand = "Credit Card";
-  if (cpResult && cpResult.bintype) {
-    cardBrand = cpResult.bintype; // e.g., "Mastercard", "Visa", "Discover", "Amex"
-  } else if (cpResult && cpResult.brand) {
-    cardBrand = cpResult.brand;
+  if (cpResult) {
+    const rawBrand = cpResult.brand || cpResult.bintype;
+    if (rawBrand) {
+      const brandUpper = rawBrand.toUpperCase().trim();
+      if (brandUpper === "VISA") cardBrand = "Visa";
+      else if (brandUpper === "MASTERCARD" || brandUpper === "MC") cardBrand = "Mastercard";
+      else if (brandUpper === "AMEX" || brandUpper === "AMERICAN EXPRESS") cardBrand = "Amex";
+      else if (brandUpper === "DISCOVER") cardBrand = "Discover";
+      else {
+        cardBrand = brandUpper.charAt(0) + brandUpper.slice(1).toLowerCase();
+      }
+    }
   }
 
   
