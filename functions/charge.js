@@ -143,12 +143,12 @@ export async function onRequestPost(context) {
     const rawBrand = cpResult.brand || cpResult.bintype;
     if (rawBrand) {
       const brandUpper = rawBrand.toUpperCase().trim();
-      if (brandUpper === "VISA") cardBrand = "Visa";
+      if (brandUpper === "VISA" || brandUpper.includes("VISA")) cardBrand = "Visa";
       else if (brandUpper === "MASTERCARD" || brandUpper === "MC") cardBrand = "Mastercard";
       else if (brandUpper === "AMEX" || brandUpper === "AMERICAN EXPRESS") cardBrand = "Amex";
       else if (brandUpper === "DISCOVER") cardBrand = "Discover";
       else {
-        cardBrand = brandUpper.charAt(0) + brandUpper.slice(1).toLowerCase();
+        cardBrand = "Credit Card"; // Fallback to a generic string instead of displaying "Corp"
       }
     }
   }
