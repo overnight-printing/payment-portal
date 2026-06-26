@@ -1,6 +1,76 @@
 // Cloudflare Worker backend for Overnight Printing Seattle Payment Portal
 // Handles secure Supabase updates (bypassing RLS with service_role), Resend emails, and CardPointe charges.
 
+function normalizeCardBrand(value) {
+  if (!value) return null;
+
+  const brand = String(value).toUpperCase().trim();
+  if (!brand) return null;
+
+  if (brand.includes("VISA")) return "Visa";
+  if (brand.includes("MASTERCARD") || brand === "MC" || brand.includes("MASTER CARD")) return "Mastercard";
+  if (brand.includes("AMEX") || brand.includes("AMERICAN EXPRESS")) return "Amex";
+  if (brand.includes("DISCOVER")) return "Discover";
+
+  return null;
+}
+
+function firstThree(value) {
+  return Number(String(value).slice(0, 3));
+}
+
+function cardBrandFromTokenPrefix(token) {
+  if (!/^\d{12,19}$/.test(token || "")) return null;
+
+  const firstTwo = Number(token.slice(0, 2));
+  const firstFour = Number(token.slice(0, 4));
+  const firstSix = Number(token.slice(0, 6));
+
+  if (token.startsWith("4")) return "Visa";
+  if ((firstTwo >= 51 && firstTwo <= 55) || (firstFour >= 2221 && firstFour <= 2720)) return "Mastercard";
+  if (token.startsWith("34") || token.startsWith("37")) return "Amex";
+  if (
+    token.startsWith("6011") ||
+    token.startsWith("65") ||
+    (firstThree(token) >= 644 && firstThree(token) <= 649) ||
+    (firstSix >= 622126 && firstSix <= 622925)
+  ) return "Discover";
+
+  return null;
+}
+
+function getPaymentMethodDetails(cpResult, frontendBrand, token) {
+  const brandCandidates = [
+    cpResult?.brand,
+    cpResult?.cardbrand,
+    cpResult?.cardBrand,
+    cpResult?.cardtype,
+    cpResult?.cardType,
+    cpResult?.network,
+    cpResult?.scheme,
+    frontendBrand,
+  ];
+
+  const cardBrand = brandCandidates.map(normalizeCardBrand).find(Boolean)
+    || cardBrandFromTokenPrefix(token)
+    || "Credit Card";
+
+  const last4Candidates = [
+    cpResult?.last4,
+    cpResult?.acctlast4,
+    cpResult?.accountlast4,
+    cpResult?.cardlast4,
+    cpResult?.token?.slice?.(-4),
+    cpResult?.account?.slice?.(-4),
+    token?.slice?.(-4),
+  ];
+  const last4 = last4Candidates
+    .map((value) => String(value || "").replace(/\D/g, "").slice(-4))
+    .find((value) => value.length === 4) || "****";
+
+  return { cardBrand, last4 };
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -535,40 +605,7 @@ async function handleCharge(request, env, ctx, corsHeaders) {
     timeStyle: "medium",
   });
 
-  // Determine card brand from CardPointe response (prioritize brand/network over bintype, fallback to token prefix)
-  let cardBrand = "Credit Card";
-  if (cpResult) {
-    const rawBrand = cpResult.brand || cpResult.bintype;
-    if (rawBrand) {
-      const brandUpper = rawBrand.toUpperCase().trim();
-      if (brandUpper === "VISA" || brandUpper.includes("VISA")) cardBrand = "Visa";
-      else if (brandUpper === "MASTERCARD" || brandUpper === "MC") cardBrand = "Mastercard";
-      else if (brandUpper === "AMEX" || brandUpper === "AMERICAN EXPRESS") cardBrand = "Amex";
-      else if (brandUpper === "DISCOVER") cardBrand = "Discover";
-      else {
-        cardBrand = "Credit Card"; // Fallback to a generic string instead of displaying "Corp"
-      }
-    }
-  }
-  
-  // Override with frontend validation if backend detection failed or returned generic
-  if (frontendBrand && frontendBrand !== "Credit Card") {
-    const fbUpper = frontendBrand.toUpperCase();
-    if (fbUpper.includes("VISA")) cardBrand = "Visa";
-    else if (fbUpper.includes("MASTER") || fbUpper === "MC") cardBrand = "Mastercard";
-    else if (fbUpper.includes("AMEX") || fbUpper.includes("AMERICAN")) cardBrand = "Amex";
-    else if (fbUpper.includes("DISCOVER")) cardBrand = "Discover";
-  }
-
-  // Override arbitrary strings like "Corp" or "Business" if the token prefix matches a known brand
-  if (token) {
-    if (token.startsWith("4")) cardBrand = "Visa";
-    else if (token.startsWith("5")) cardBrand = "Mastercard";
-    else if (token.startsWith("3")) cardBrand = "Amex";
-    else if (token.startsWith("6")) cardBrand = "Discover";
-  }
-  
-  const last4 = token.length >= 4 ? token.slice(-4) : "****";
+  const { cardBrand, last4 } = getPaymentMethodDetails(cpResult, frontendBrand, token);
 
   const staffEmailBody = {
     from: "Billing Alerts <accounting@overnightprintingseattle.com>",

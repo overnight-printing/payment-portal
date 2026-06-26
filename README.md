@@ -1,16 +1,35 @@
-# React + Vite
+# Payment Portal
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A Vite/React payment portal with serverless endpoints for payment links,
+charges, and invoice analysis.
 
-Currently, two official plugins are available:
+## Development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```bash
+npm install
+npm run dev
+```
 
-## React Compiler
+Before handing off code changes:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+npm run lint
+npm run build
+```
 
-## Expanding the ESLint configuration
+## Spec Kit Workflow
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+This repo uses GitHub Spec Kit. For non-trivial work, especially payment,
+invoice parsing, link creation, Supabase, worker, or deployment changes:
+
+1. Read `.specify/memory/constitution.md`.
+2. Create or update a feature under `specs/` with `$speckit-specify`.
+3. Produce `plan.md` with `$speckit-plan`.
+4. Produce `tasks.md` with `$speckit-tasks`.
+5. Implement from the task list and verify with lint/build.
+
+## Security Baseline
+
+Never commit, log, store, return, or screenshot raw card numbers, CVV values,
+payment tokens, service keys, API keys, or customer secrets. Keep secrets in the
+appropriate local or deployment environment.

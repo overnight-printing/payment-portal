@@ -47,10 +47,9 @@ export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess })
   // Listen to message events from CardPointe iFrame
   useEffect(() => {
     const handleFrameMessage = (event) => {
-      // VERBOSE LOGGING: Log EVERY incoming message on the window to debug origin mismatch
+      // Log metadata only; tokenizer payloads can include sensitive payment tokens.
       console.log('PaymentForm - Global window received postMessage:', {
         origin: event.origin,
-        data: event.data,
         dataType: typeof event.data
       });
 
@@ -62,7 +61,7 @@ export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess })
 
       try {
         const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-        console.log('PaymentForm - Parsed CardPointe payload:', data);
+        console.log('PaymentForm - Parsed CardPointe payload keys:', Object.keys(data || {}));
         
         // Capture validation events (which contain the card brand as the user types)
         if (data.validation) {
@@ -79,7 +78,7 @@ export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess })
         const token = data.token || data.message;
         
         if (token && !data.error && (!data.errorCode || data.errorCode === '0' || data.errorCode === 0)) {
-          console.log('PaymentForm - Token received successfully:', token);
+          console.log('PaymentForm - Token received successfully.');
           
           // Cache the latest received token for instant retrieval
           latestTokenRef.current = token;

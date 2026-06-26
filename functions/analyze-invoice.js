@@ -62,7 +62,7 @@ function parseInvoiceText(text) {
       const isPhoneNumber = (str) => {
         const digitCount = (str.match(/\d/g) || []).length;
         if (digitCount >= 7) {
-          const stripped = str.replace(/[\d\s\-\(\)\+\.]/g, '');
+          const stripped = str.replace(/[\d\s\-()+.]/g, '');
           if (stripped.length <= 2) return true;
         }
         return false;
