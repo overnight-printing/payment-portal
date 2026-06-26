@@ -68,6 +68,35 @@ function getPaymentMethodDetails(cpResult, frontendBrand, token) {
   return { cardBrand, last4 };
 }
 
+function logPaymentMethodDiagnostics(label, cpResult, frontendBrand, details) {
+  const safeFields = [
+    "brand",
+    "cardbrand",
+    "cardBrand",
+    "cardtype",
+    "cardType",
+    "network",
+    "scheme",
+    "bintype",
+    "commcard",
+    "binInfo",
+  ];
+
+  const safeValues = Object.fromEntries(
+    safeFields
+      .filter((field) => cpResult && cpResult[field] !== undefined)
+      .map((field) => [field, cpResult[field]])
+  );
+
+  console.log(label, {
+    responseKeys: Object.keys(cpResult || {}),
+    safeValues,
+    frontendBrand,
+    resolvedBrand: details.cardBrand,
+    hasLast4: details.last4 !== "****",
+  });
+}
+
 export async function onRequestPost(context) {
   const { request, env } = context;
 
@@ -254,7 +283,9 @@ export async function onRequestPost(context) {
     timeStyle: "medium",
   });
 
-  const { cardBrand, last4 } = getPaymentMethodDetails(cpResult, frontendBrand, token);
+  const paymentMethodDetails = getPaymentMethodDetails(cpResult, frontendBrand, token);
+  logPaymentMethodDiagnostics("Pages Functions - CardPointe payment method diagnostics", cpResult, frontendBrand, paymentMethodDetails);
+  const { cardBrand, last4 } = paymentMethodDetails;
 
   const staffEmailBody = {
     from: "Billing Alerts <accounting@overnightprintingseattle.com>",
