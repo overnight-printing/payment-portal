@@ -97,6 +97,39 @@ function logPaymentMethodDiagnostics(label, cpResult, frontendBrand, details) {
   });
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function getPaymentMethodDebugText(cpResult, frontendBrand, details) {
+  const safeFields = [
+    "brand",
+    "cardbrand",
+    "cardBrand",
+    "cardtype",
+    "cardType",
+    "network",
+    "scheme",
+    "bintype",
+    "commcard",
+  ];
+  const safeValues = safeFields
+    .filter((field) => cpResult && cpResult[field] !== undefined)
+    .map((field) => `${field}=${String(cpResult[field])}`);
+
+  return [
+    `keys=${Object.keys(cpResult || {}).join(",") || "none"}`,
+    `safe=${safeValues.join("; ") || "none"}`,
+    `frontendBrand=${frontendBrand || "none"}`,
+    `resolved=${details.cardBrand}`,
+  ].join(" | ");
+}
+
 export async function onRequestPost(context) {
   const { request, env } = context;
 
@@ -285,6 +318,7 @@ export async function onRequestPost(context) {
 
   const paymentMethodDetails = getPaymentMethodDetails(cpResult, frontendBrand, token);
   logPaymentMethodDiagnostics("Pages Functions - CardPointe payment method diagnostics", cpResult, frontendBrand, paymentMethodDetails);
+  const paymentMethodDebugText = getPaymentMethodDebugText(cpResult, frontendBrand, paymentMethodDetails);
   const { cardBrand, last4 } = paymentMethodDetails;
 
   const staffEmailBody = {
@@ -309,6 +343,10 @@ export async function onRequestPost(context) {
           <tr>
             <td style="padding: 8px 0; color: #4b5563; font-weight: 500;">Payment Method:</td>
             <td style="padding: 8px 0; font-weight: 600;">${cardBrand} ending in ${last4}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0; color: #9ca3af; font-weight: 500;">CardPointe Debug:</td>
+            <td style="padding: 8px 0; color: #9ca3af; font-size: 12px; word-break: break-word;">${escapeHtml(paymentMethodDebugText)}</td>
           </tr>
           <tr>
             <td style="padding: 8px 0; color: #4b5563; font-weight: 500;">Customer Name:</td>
