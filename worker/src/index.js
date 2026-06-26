@@ -1,60 +1,7 @@
 // Cloudflare Worker backend for Overnight Printing Seattle Payment Portal
 // Handles secure Supabase updates (bypassing RLS with service_role), Resend emails, and CardPointe charges.
 
-function normalizeCardBrand(value) {
-  if (!value) return null;
-
-  const brand = String(value).toUpperCase().trim();
-  if (!brand) return null;
-
-  if (brand.includes("VISA")) return "Visa";
-  if (brand.includes("MASTERCARD") || brand === "MC" || brand.includes("MASTER CARD")) return "Mastercard";
-  if (brand.includes("AMEX") || brand.includes("AMERICAN EXPRESS")) return "Amex";
-  if (brand.includes("DISCOVER")) return "Discover";
-
-  return null;
-}
-
-function firstThree(value) {
-  return Number(String(value).slice(0, 3));
-}
-
-function cardBrandFromTokenPrefix(token) {
-  if (!/^\d{12,19}$/.test(token || "")) return null;
-
-  const firstTwo = Number(token.slice(0, 2));
-  const firstFour = Number(token.slice(0, 4));
-  const firstSix = Number(token.slice(0, 6));
-
-  if (token.startsWith("4")) return "Visa";
-  if ((firstTwo >= 51 && firstTwo <= 55) || (firstFour >= 2221 && firstFour <= 2720)) return "Mastercard";
-  if (token.startsWith("34") || token.startsWith("37")) return "Amex";
-  if (
-    token.startsWith("6011") ||
-    token.startsWith("65") ||
-    (firstThree(token) >= 644 && firstThree(token) <= 649) ||
-    (firstSix >= 622126 && firstSix <= 622925)
-  ) return "Discover";
-
-  return null;
-}
-
-function getPaymentMethodDetails(cpResult, frontendBrand, token) {
-  const brandCandidates = [
-    cpResult?.brand,
-    cpResult?.cardbrand,
-    cpResult?.cardBrand,
-    cpResult?.cardtype,
-    cpResult?.cardType,
-    cpResult?.network,
-    cpResult?.scheme,
-    frontendBrand,
-  ];
-
-  const cardBrand = brandCandidates.map(normalizeCardBrand).find(Boolean)
-    || cardBrandFromTokenPrefix(token)
-    || "Credit Card";
-
+function getPaymentLast4(cpResult, token) {
   const last4Candidates = [
     cpResult?.last4,
     cpResult?.acctlast4,
@@ -68,69 +15,7 @@ function getPaymentMethodDetails(cpResult, frontendBrand, token) {
     .map((value) => String(value || "").replace(/\D/g, "").slice(-4))
     .find((value) => value.length === 4) || "****";
 
-  return { cardBrand, last4 };
-}
-
-function logPaymentMethodDiagnostics(label, cpResult, frontendBrand, details) {
-  const safeFields = [
-    "brand",
-    "cardbrand",
-    "cardBrand",
-    "cardtype",
-    "cardType",
-    "network",
-    "scheme",
-    "bintype",
-    "commcard",
-    "binInfo",
-  ];
-
-  const safeValues = Object.fromEntries(
-    safeFields
-      .filter((field) => cpResult && cpResult[field] !== undefined)
-      .map((field) => [field, cpResult[field]])
-  );
-
-  console.log(label, {
-    responseKeys: Object.keys(cpResult || {}),
-    safeValues,
-    frontendBrand,
-    resolvedBrand: details.cardBrand,
-    hasLast4: details.last4 !== "****",
-  });
-}
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function getPaymentMethodDebugText(cpResult, frontendBrand, details) {
-  const safeFields = [
-    "brand",
-    "cardbrand",
-    "cardBrand",
-    "cardtype",
-    "cardType",
-    "network",
-    "scheme",
-    "bintype",
-    "commcard",
-  ];
-  const safeValues = safeFields
-    .filter((field) => cpResult && cpResult[field] !== undefined)
-    .map((field) => `${field}=${String(cpResult[field])}`);
-
-  return [
-    `keys=${Object.keys(cpResult || {}).join(",") || "none"}`,
-    `safe=${safeValues.join("; ") || "none"}`,
-    `frontendBrand=${frontendBrand || "none"}`,
-    `resolved=${details.cardBrand}`,
-  ].join(" | ");
+  return last4;
 }
 
 export default {
@@ -494,7 +379,7 @@ async function handleCreateLink(request, env, ctx, corsHeaders) {
  * Handles charging the tokenized card via CardPointe and updating the Supabase state + notifying internal staff.
  */
 async function handleCharge(request, env, ctx, corsHeaders) {
-  const { token, amount, expiry, cvv2, zip, paymentLinkId, frontendBrand } = await request.json();
+  const { token, amount, expiry, cvv2, zip, paymentLinkId } = await request.json();
 
   if (!token || !amount || !expiry || !cvv2 || !zip || !paymentLinkId) {
     return new Response(JSON.stringify({ message: "Missing transaction parameters" }), {
@@ -667,10 +552,7 @@ async function handleCharge(request, env, ctx, corsHeaders) {
     timeStyle: "medium",
   });
 
-  const paymentMethodDetails = getPaymentMethodDetails(cpResult, frontendBrand, token);
-  logPaymentMethodDiagnostics("Worker - CardPointe payment method diagnostics", cpResult, frontendBrand, paymentMethodDetails);
-  const paymentMethodDebugText = getPaymentMethodDebugText(cpResult, frontendBrand, paymentMethodDetails);
-  const { cardBrand, last4 } = paymentMethodDetails;
+  const last4 = getPaymentLast4(cpResult, token);
 
   const staffEmailBody = {
     from: "Billing Alerts <accounting@overnightprintingseattle.com>",
@@ -693,11 +575,7 @@ async function handleCharge(request, env, ctx, corsHeaders) {
           </tr>
           <tr>
             <td style="padding: 8px 0; color: #4b5563; font-weight: 500;">Payment Method:</td>
-            <td style="padding: 8px 0; font-weight: 600;">${cardBrand} ending in ${last4}</td>
-          </tr>
-          <tr>
-            <td style="padding: 8px 0; color: #9ca3af; font-weight: 500;">CardPointe Debug:</td>
-            <td style="padding: 8px 0; color: #9ca3af; font-size: 12px; word-break: break-word;">${escapeHtml(paymentMethodDebugText)}</td>
+            <td style="padding: 8px 0; font-weight: 600;">Credit Card ending in ${last4}</td>
           </tr>
           <tr>
             <td style="padding: 8px 0; color: #4b5563; font-weight: 500;">Customer Name:</td>

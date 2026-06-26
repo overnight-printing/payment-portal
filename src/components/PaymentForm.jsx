@@ -12,7 +12,6 @@ export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess })
   const resolveTokenRef = useRef(null);
   const rejectTokenRef = useRef(null);
   const latestTokenRef = useRef(null); // Ref to hold the token received prior to button submit
-  const [frontendBrand, setFrontendBrand] = useState('');
 
   // Compute fixed iframe URL only once on mount to prevent the iframe from reloading
   // when component props or processing state changes (e.g. isProcessing toggling)
@@ -62,18 +61,6 @@ export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess })
       try {
         const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
         console.log('PaymentForm - Parsed CardPointe payload keys:', Object.keys(data || {}));
-        
-        // Capture validation events (which contain the card brand as the user types)
-        if (data.validation) {
-          setFrontendBrand(data.validation);
-          console.log('PaymentForm - Captured frontend brand from validation event:', data.validation);
-        } else if (data.cardType) {
-          setFrontendBrand(data.cardType);
-          console.log('PaymentForm - Captured frontend brand from cardType event:', data.cardType);
-        } else if (data.brand) {
-          setFrontendBrand(data.brand);
-          console.log('PaymentForm - Captured frontend brand from brand event:', data.brand);
-        }
         
         const token = data.token || data.message;
         
@@ -200,7 +187,6 @@ export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess })
           cvv2: cvv,
           zip,
           paymentLinkId,
-          frontendBrand // Pass the captured brand to the backend
         }),
       });
 
