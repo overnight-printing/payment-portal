@@ -1,291 +1,372 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import Icon from './Icon';
+import { apiRequest, postJson } from '../lib/api';
+import { CARD_TOKEN, validCardholderName } from '../../shared/validation';
 
-export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess }) {
+const TOKEN_TIMEOUT_MS = 10000;
+
+function validateExpiry(value) {
+  const match = /^(0[1-9]|1[0-2])\/(\d{2})$/.exec(value);
+  if (!match) return 'Enter a valid expiration date in MM/YY format.';
+
+  const month = Number(match[1]);
+  const year = 2000 + Number(match[2]);
+  const now = new Date();
+  const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const enteredMonth = new Date(year, month - 1, 1);
+
+  return enteredMonth < currentMonth ? 'Use a card that has not expired.' : '';
+}
+
+function validateField(name, value) {
+  if (name === 'cardholderName') return validCardholderName(value) ? '' : 'Enter the name on the card, up to 30 characters.';
+  if (name === 'expiry') return validateExpiry(value);
+  if (name === 'cvv') return /^\d{3,4}$/.test(value) ? '' : 'Enter the 3 or 4 digit security code.';
+  if (name === 'zip') return /^\d{5}$/.test(value) ? '' : 'Enter the 5 digit billing ZIP code.';
+  return '';
+}
+
+export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess, onPaymentPending, onInvoiceUnavailable, onInvoiceChanged, tokenizerOrigin }) {
+  const [cardholderName, setCardholderName] = useState('');
   const [expiry, setExpiry] = useState('');
   const [cvv, setCvv] = useState('');
   const [zip, setZip] = useState('');
-  
+  const [touched, setTouched] = useState({});
+  const [errors, setErrors] = useState({});
   const [isProcessing, setIsProcessing] = useState(false);
-  const [error, setError] = useState(null);
-  
-  const iframeRef = useRef(null);
-  const resolveTokenRef = useRef(null);
-  const rejectTokenRef = useRef(null);
-  const latestTokenRef = useRef(null); // Ref to hold the token received prior to button submit
+  const [isIframeReady, setIsIframeReady] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [frameVersion, setFrameVersion] = useState(0);
+  const [frameFailed, setFrameFailed] = useState(false);
 
-  // Compute fixed iframe URL only once on mount to prevent the iframe from reloading
-  // when component props or processing state changes (e.g. isProcessing toggling)
+  const iframeRef = useRef(null);
+  const fieldRefs = useRef({});
+  const pendingTokenRef = useRef(null);
+  const tokenRef = useRef(null);
+  const trustedFrameRef = useRef(null);
+  const chargeControllerRef = useRef(null);
+  const processingRef = useRef(false);
+  const mountedRef = useRef(true);
+
   const [iframeUrl] = useState(() => {
-    // Always use light mode theme colors for the secure input iframe
-    const textColor = '#0f0b21';
-    const placeholderColor = '#a1a1aa';
-    
-    // Safely write standard CSS and encode it via encodeURIComponent to prevent tokenizer script errors
     const cssStyle = `
       input {
-        font-family: 'Outfit', system-ui, sans-serif;
+        font-family: Arial, Helvetica, sans-serif;
         font-size: 16px;
-        color: ${textColor};
+        color: #1e293b;
         border: none;
         outline: none;
         background: transparent;
         width: 100%;
         box-sizing: border-box;
       }
-      input::placeholder {
-        color: ${placeholderColor};
-      }
+      input::placeholder { color: #64748b; }
     `;
-    
-    // formatinput=true formats the card number with spaces as the user types (supports Amex/Visa/MC layouts)
-    const url = `https://fts.cardconnect.com/itoke/ajax-tokenizer.html?formatinput=true&css=${encodeURIComponent(cssStyle)}`;
-    console.log('PaymentForm - Computed Static iframe URL:', url);
-    return url;
+    const origin = tokenizerOrigin;
+    return `${origin}/itoke/ajax-tokenizer.html?formatinput=true&enhancedresponse=true&sendcardtypingevent=true&css=${encodeURIComponent(cssStyle)}`;
   });
 
-  // Listen to message events from CardPointe iFrame
+  const clearPendingToken = () => {
+    if (pendingTokenRef.current?.timeoutId) {
+      window.clearTimeout(pendingTokenRef.current.timeoutId);
+    }
+    pendingTokenRef.current = null;
+  };
+
   useEffect(() => {
+    mountedRef.current = true;
+
     const handleFrameMessage = (event) => {
-      // Log metadata only; tokenizer payloads can include sensitive payment tokens.
-      console.log('PaymentForm - Global window received postMessage:', {
-        origin: event.origin,
-        dataType: typeof event.data
-      });
+      if (!iframeRef.current || event.source !== iframeRef.current.contentWindow || event.source !== trustedFrameRef.current) return;
 
-      // Ensure the message is coming from CardPointe domains (allowing sandbox/subdomains & port variations)
-      const isCardPointe = event.origin.endsWith('cardconnect.com') || event.origin.includes('cardconnect.com:');
-      if (!isCardPointe) {
-        return;
-      }
-
+      if (event.origin !== new URL(iframeUrl).origin) return;
       try {
         const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-        console.log('PaymentForm - Parsed CardPointe payload keys:', Object.keys(data || {}));
-        
-        const token = data.token || data.message;
-        
-        if (token && !data.error && (!data.errorCode || data.errorCode === '0' || data.errorCode === 0)) {
-          console.log('PaymentForm - Token received successfully.');
-          
-          // Cache the latest received token for instant retrieval
-          latestTokenRef.current = token;
-
-          if (resolveTokenRef.current) {
-            resolveTokenRef.current(token);
-            resolveTokenRef.current = null;
-            rejectTokenRef.current = null;
+        if (data?.cardTyping || data?.message === '' || data?.validationError || data?.errorCode && String(data.errorCode) !== '0') {
+          tokenRef.current = null;
+          if (pendingTokenRef.current && !data?.cardTyping) {
+            const { reject } = pendingTokenRef.current;
+            clearPendingToken();
+            reject(new Error('tokenization_failed'));
           }
-        } else if (data.errorCode || data.error) {
-          const errMsg = data.error || `Error Code: ${data.errorCode}`;
-          console.warn('PaymentForm - Error tokenizing card:', errMsg);
-          if (rejectTokenRef.current) {
-            rejectTokenRef.current(new Error(`Card Validation Failed: ${errMsg}`));
-            resolveTokenRef.current = null;
-            rejectTokenRef.current = null;
-          }
+          return;
         }
-      } catch (err) {
-        console.error('PaymentForm - Failed to parse postMessage data:', err);
+        const token = data?.token || data?.message;
+        if (typeof token !== 'string' || !CARD_TOKEN.test(token)) return;
+        if (pendingTokenRef.current) {
+          const { resolve } = pendingTokenRef.current;
+          clearPendingToken();
+          tokenRef.current = null;
+          resolve(token);
+        } else tokenRef.current = token;
+      } catch {
+        tokenRef.current = null;
       }
     };
 
     window.addEventListener('message', handleFrameMessage);
-    return () => window.removeEventListener('message', handleFrameMessage);
-  }, []);
+    return () => {
+      mountedRef.current = false;
+      pendingTokenRef.current?.reject(new Error('tokenizer_unavailable'));
+      clearPendingToken();
+      tokenRef.current = null;
+      chargeControllerRef.current?.abort();
+      window.removeEventListener('message', handleFrameMessage);
+    };
+  }, [iframeUrl]);
 
-  // Format expiry input as MM/YY automatically
-  const handleExpiryChange = (e) => {
-    let value = e.target.value.replace(/\D/g, ''); // Numbers only
-    if (value.length > 4) value = value.slice(0, 4);
-    
-    if (value.length > 2) {
-      setExpiry(`${value.slice(0, 2)}/${value.slice(2)}`);
-    } else {
-      setExpiry(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { if (!isIframeReady) setFrameFailed(true); }, 12000);
+    return () => window.clearTimeout(timer);
+  }, [frameVersion, isIframeReady]);
+
+  const reloadFrame = () => {
+    tokenRef.current = null;
+    trustedFrameRef.current = null;
+    setIsIframeReady(false);
+    setFrameFailed(false);
+    setFrameVersion((value) => value + 1);
+  };
+
+  const handleExpiryChange = (event) => {
+    const digits = event.target.value.replace(/\D/g, '').slice(0, 4);
+    const value = digits.length > 2 ? `${digits.slice(0, 2)}/${digits.slice(2)}` : digits;
+    setExpiry(value);
+    if (touched.expiry) setErrors((current) => ({ ...current, expiry: validateField('expiry', value) }));
+  };
+
+  const updateNumericField = (name, value, limit, setter) => {
+    const nextValue = value.replace(/\D/g, '').slice(0, limit);
+    setter(nextValue);
+    if (touched[name]) setErrors((current) => ({ ...current, [name]: validateField(name, nextValue) }));
+  };
+
+  const handleBlur = (name, value) => {
+    setTouched((current) => ({ ...current, [name]: true }));
+    setErrors((current) => ({ ...current, [name]: validateField(name, value) }));
+  };
+
+  const requestCardToken = () => new Promise((resolve, reject) => {
+    if (!isIframeReady || !iframeRef.current?.contentWindow) {
+      reject(new Error('tokenizer_unavailable'));
+      return;
     }
+
+    if (tokenRef.current) {
+      const token = tokenRef.current;
+      tokenRef.current = null;
+      resolve(token);
+      return;
+    }
+    clearPendingToken();
+    const timeoutId = window.setTimeout(() => {
+      const pending = pendingTokenRef.current;
+      clearPendingToken();
+      pending?.reject(new Error('tokenization_timeout'));
+    }, TOKEN_TIMEOUT_MS);
+    // CardPointe tokenizes on blur; a result can arrive after the Pay button receives focus.
+    pendingTokenRef.current = { resolve, reject, timeoutId };
+  });
+
+  const validateAll = () => {
+    const nextErrors = {
+      cardholderName: validateField('cardholderName', cardholderName),
+      expiry: validateField('expiry', expiry),
+      cvv: validateField('cvv', cvv),
+      zip: validateField('zip', zip),
+    };
+    setTouched({ cardholderName: true, expiry: true, cvv: true, zip: true });
+    setErrors(nextErrors);
+
+    const firstInvalid = ['cardholderName', 'expiry', 'cvv', 'zip'].find((name) => nextErrors[name]);
+    if (firstInvalid) {
+      window.requestAnimationFrame(() => fieldRefs.current[firstInvalid]?.focus());
+      return false;
+    }
+    return true;
   };
 
-  // Trigger tokenizer in iframe and wait for the token via promise
-  const requestCardToken = () => {
-    return new Promise((resolve, reject) => {
-      // If we already have a token captured from the automatic focus-out event, use it immediately!
-      if (latestTokenRef.current) {
-        console.log('PaymentForm - Resolving immediately with pre-captured token:', latestTokenRef.current);
-        resolve(latestTokenRef.current);
-        return;
-      }
+  const handlePaySubmit = async (event) => {
+    event.preventDefault();
+    if (processingRef.current || !validateAll()) return;
 
-      resolveTokenRef.current = resolve;
-      rejectTokenRef.current = reject;
-
-      if (iframeRef.current && iframeRef.current.contentWindow) {
-        console.log('PaymentForm - No pre-captured token. Sending "tokenize" commands to iframe contentWindow. TargetOrigin: https://fts.cardconnect.com');
-        // Send both plain string and JSON formats with fts.cardconnect.com targetOrigin
-        iframeRef.current.contentWindow.postMessage('tokenize', 'https://fts.cardconnect.com');
-        iframeRef.current.contentWindow.postMessage(JSON.stringify({ action: 'tokenize' }), 'https://fts.cardconnect.com');
-      } else {
-        console.error('PaymentForm - iframeRef contentWindow is null or iframe not mounted');
-        reject(new Error('Payment tokenizer frame is not loaded.'));
-      }
-    });
-  };
-
-  const handlePaySubmit = async (e) => {
-    e.preventDefault();
-    console.log('PaymentForm - handlePaySubmit triggered');
+    processingRef.current = true;
     setIsProcessing(true);
-    setError(null);
+    setFormError('');
 
     try {
-      // 1. Local Validations
-      if (!expiry || !cvv || !zip) {
-        throw new Error('All fields are required.');
-      }
-
-      const expiryClean = expiry.replace(/\//g, '');
-      if (expiryClean.length !== 4) {
-        throw new Error('Invalid Expiration Date format. Use MM/YY.');
-      }
-
-      const expMonth = parseInt(expiryClean.slice(0, 2), 10);
-      if (expMonth < 1 || expMonth > 12) {
-        throw new Error('Expiration month must be between 01 and 12.');
-      }
-
-      if (!/^\d{3,4}$/.test(cvv)) {
-        throw new Error('CVV must be 3 or 4 digits.');
-      }
-
-      if (!/^\d{5}$/.test(zip)) {
-        throw new Error('ZIP code must be 5 digits.');
-      }
-
-      console.log('PaymentForm - Local validation passed. Expiry:', expiryClean, 'ZIP:', zip);
-
-      // 2. Request token from CardPointe iframe tokenizer
       let token;
       try {
-        console.log('PaymentForm - Awaiting requestCardToken()...');
         token = await requestCardToken();
-        console.log('PaymentForm - Token promise resolved! Token:', token);
-      } catch (tokenErr) {
-        console.error('PaymentForm - requestCardToken() promise rejected:', tokenErr);
-        throw new Error('Failed to secure card token. Please verify card number.', { cause: tokenErr });
+      } catch (tokenError) {
+        if (tokenError.message === 'tokenization_timeout') {
+          throw new Error('Card verification took too long. Check your connection and try again.', { cause: tokenError });
+        }
+        if (tokenError.message === 'tokenizer_unavailable') {
+          throw new Error('The secure card field is still loading. Wait a moment and try again.', { cause: tokenError });
+        }
+        throw new Error('We could not verify the card number. Review it and try again.', { cause: tokenError });
       }
 
-      // 3. Post charge request to Cloudflare Pages Function
-      console.log('PaymentForm - Sending /charge POST to Pages Function');
-      const response = await fetch('/charge', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          token,
-          amount: parseFloat(amount).toFixed(2),
-          expiry: expiryClean, // MMYY format e.g. "1228"
-          cvv2: cvv,
-          zip,
-          paymentLinkId,
-        }),
-      });
-
-      console.log('PaymentForm - Received response status from Worker:', response.status);
-      const result = await response.json();
-      console.log('PaymentForm - Received body from Worker:', result);
-
-      if (!response.ok) {
-        throw new Error(result.message || 'Payment processing failed.');
+      const controller = new AbortController();
+      chargeControllerRef.current = controller;
+      let outcome;
+      try {
+        outcome = await apiRequest('/charge', {
+          ...postJson({ amount, token, cardholderName: cardholderName.trim(), expiry: expiry.replace('/', ''), cvv2: cvv, zip, paymentLinkId }),
+          timeout: 60000, signal: controller.signal,
+        });
+      } catch {
+        if (mountedRef.current) onPaymentPending?.();
+        return;
       }
-
-      // Success
-      console.log('PaymentForm - Payment successful! retref:', result.retref);
-      if (onPaymentSuccess) {
-        onPaymentSuccess(result.retref);
+      if (!mountedRef.current) return;
+      const { response, data } = outcome;
+      if (response.ok && data?.success === true && typeof data.retref === 'string') {
+        setCvv('');
+        onPaymentSuccess?.(data);
+      } else if (response.status === 202 || response.status >= 500 || !data) {
+        setCvv('');
+        onPaymentPending?.();
+      } else if (response.status === 404) {
+        setCvv(''); onInvoiceUnavailable?.();
+      } else if (data.code === 'amount_changed') {
+        setCvv(''); onInvoiceChanged?.();
+      } else {
+        reloadFrame();
+        setCvv('');
+        setFormError(response.status === 402 ? 'Your card was declined. Re-enter the card details or try another card.' : response.status === 404 ? 'This invoice is unavailable. Contact the merchant before trying again.' : response.status === 429 ? 'Too many attempts. Wait a few minutes and check payment status.' : 'Check the payment details and try again.');
       }
-    } catch (err) {
-      console.error('PaymentForm - Submission catch block caught error:', err);
-      setError(err.message);
-      setIsProcessing(false);
+    } catch {
+      if (!mountedRef.current) return;
+      reloadFrame();
+      setFormError('We could not verify the card number. Re-enter it, then move to the expiration field and try again.');
+      window.requestAnimationFrame(() => iframeRef.current?.focus());
+
+    } finally {
+      processingRef.current = false;
+      if (mountedRef.current) setIsProcessing(false);
     }
   };
 
   return (
-    <form onSubmit={handlePaySubmit} className="fade-in">
-      {error && (
-        <div className="alert alert-error">
-          <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-          <div>{error}</div>
+    <form onSubmit={handlePaySubmit} className="payment-form" aria-busy={isProcessing} noValidate>
+      {formError && (
+        <div className="alert alert-error" role="alert">
+          <Icon name="warning" />
+          <div>
+            <strong>Payment needs attention</strong>
+            <p>{formError}</p>
+          </div>
         </div>
       )}
 
       <div className="form-group">
-        <label>Card Number</label>
-        <div className="iframe-container">
+        <label htmlFor="cardholderName">Name on card <span className="required-text">Required</span></label>
+        <input ref={(node) => { fieldRefs.current.cardholderName = node; }} id="cardholderName" type="text" required value={cardholderName} maxLength={30} autoComplete="cc-name" autoCapitalize="words" disabled={isProcessing} onChange={(event) => { const value = event.target.value; setCardholderName(value); if (touched.cardholderName) setErrors((current) => ({ ...current, cardholderName: validateField('cardholderName', value) })); }} onBlur={() => handleBlur('cardholderName', cardholderName)} aria-invalid={Boolean(errors.cardholderName)} aria-describedby="cardholder-help cardholder-error" />
+        <p className="field-help" id="cardholder-help">As shown on the card. This may differ from the invoice customer.</p>
+        <p className="field-error" id="cardholder-error" aria-live="polite">{errors.cardholderName || ''}</p>
+      </div>
+
+      <div className="form-group" role="group" aria-labelledby="card-number-label" aria-describedby="card-number-help">
+        <span className="form-label" id="card-number-label">Card number <span className="required-text">Required</span></span>
+        <div className={`iframe-container${isIframeReady ? '' : ' is-loading'}`} inert={isProcessing ? true : undefined}>
           <iframe
+            key={frameVersion}
             ref={iframeRef}
             id="tokenFrame"
             name="tokenFrame"
             src={iframeUrl}
-            title="Secure Card Input"
+            title="Secure card number field"
             scrolling="no"
+            onLoad={() => { trustedFrameRef.current = iframeRef.current?.contentWindow; tokenRef.current = null; setIsIframeReady(true); setFrameFailed(false); }}
           />
         </div>
+        <p className="field-help" id="card-number-help">
+          {frameFailed ? 'The secure field did not load. Check your connection and reload it.' : isIframeReady ? 'Enter the card number, then move to expiration to verify it securely.' : 'Loading the secure card field…'}
+        </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
-        <div className="form-group" style={{ marginBottom: 0 }}>
-          <label htmlFor="expiry">Expiration Date</label>
+      {frameFailed && <button type="button" className="btn btn-secondary" onClick={reloadFrame}>Reload secure card field</button>}
+      <p className="sr-only" role="status">{isProcessing ? 'Processing payment. Please keep this page open.' : ''}</p>
+
+      <div className="payment-field-grid">
+        <div className="form-group">
+          <label htmlFor="expiry">Expiration date <span className="required-text">Required</span></label>
           <input
+            ref={(node) => { fieldRefs.current.expiry = node; }}
             id="expiry"
             type="text"
-            required
             value={expiry}
             onChange={handleExpiryChange}
+            onBlur={() => handleBlur('expiry', expiry)}
             disabled={isProcessing}
             maxLength="5"
+            inputMode="numeric"
+            autoComplete="cc-exp"
+            placeholder="MM/YY"
+            aria-invalid={Boolean(errors.expiry)}
+            aria-describedby="expiry-help expiry-error"
           />
+          <p className="field-help" id="expiry-help">Use the month and two-digit year.</p>
+          <p className="field-error" id="expiry-error" aria-live="polite">{errors.expiry || ''}</p>
         </div>
 
-        <div className="form-group" style={{ marginBottom: 0 }}>
-          <label htmlFor="cvv">CVV</label>
+        <div className="form-group">
+          <label htmlFor="cvv">Security code <span className="required-text">Required</span></label>
           <input
+            ref={(node) => { fieldRefs.current.cvv = node; }}
             id="cvv"
             type="password"
-            required
             value={cvv}
-            onChange={(e) => setCvv(e.target.value.replace(/\D/g, '').slice(0, 4))}
+            onChange={(event) => updateNumericField('cvv', event.target.value, 4, setCvv)}
+            onBlur={() => handleBlur('cvv', cvv)}
             disabled={isProcessing}
             maxLength="4"
+            inputMode="numeric"
+            autoComplete="cc-csc"
+            aria-invalid={Boolean(errors.cvv)}
+            aria-describedby="cvv-help cvv-error"
           />
+          <p className="field-help" id="cvv-help">3 digits on most cards; 4 on American Express.</p>
+          <p className="field-error" id="cvv-error" aria-live="polite">{errors.cvv || ''}</p>
         </div>
       </div>
 
       <div className="form-group">
-        <label htmlFor="zip">Billing ZIP Code</label>
+        <label htmlFor="zip">Billing ZIP code <span className="required-text">Required</span></label>
         <input
+          ref={(node) => { fieldRefs.current.zip = node; }}
           id="zip"
           type="text"
-          required
           value={zip}
-          onChange={(e) => setZip(e.target.value.replace(/\D/g, '').slice(0, 5))}
+          onChange={(event) => updateNumericField('zip', event.target.value, 5, setZip)}
+          onBlur={() => handleBlur('zip', zip)}
           disabled={isProcessing}
           maxLength="5"
+          inputMode="numeric"
+          autoComplete="postal-code"
+          aria-invalid={Boolean(errors.zip)}
+          aria-describedby="zip-help zip-error"
         />
+        <p className="field-help" id="zip-help">Enter the ZIP code associated with the card.</p>
+        <p className="field-error" id="zip-error" aria-live="polite">{errors.zip || ''}</p>
       </div>
 
-      <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '10px' }} disabled={isProcessing}>
+      <button type="submit" className="btn btn-primary btn-full" disabled={isProcessing || !isIframeReady}>
         {isProcessing ? (
           <>
-            <div className="spinner"></div>
-            <span>Securing Payment...</span>
+            <span className="spinner" aria-hidden="true" />
+            <span>Securing payment…</span>
           </>
         ) : (
-          `Pay $${parseFloat(amount).toFixed(2)}`
+          <>
+            <Icon name="lock" />
+            <span>Pay ${Number(amount).toFixed(2)}</span>
+          </>
         )}
       </button>
+      <p className="payment-support">Need help? Email <a href="mailto:contact@overnightprintingseattle.com">contact@overnightprintingseattle.com</a>.</p>
     </form>
   );
 }

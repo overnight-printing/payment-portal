@@ -24,9 +24,15 @@ dist-ssr
 *.sw?
 
 .env
+.env.*
+!.env.example
+!.env.*.example
 
 # Cloudflare Worker secrets and caches
 .dev.vars
 .wrangler/
 worker/.dev.vars
 worker/.wrangler/
+
+# Local review artifacts
+.preview/

@@ -1,8 +1,9 @@
 # Agent Instructions
 
 <!-- SPECKIT START -->
-For additional context about technologies to be used, project structure,
-shell commands, and other important information, read the current plan.
+For the current Audit Remediation feature, read
+`specs/002-audit-remediation/plan.md` for technologies, project structure,
+validation commands, security constraints, and implementation decisions.
 <!-- SPECKIT END -->
 
 ## Repository Rules
@@ -23,11 +24,11 @@ shell commands, and other important information, read the current plan.
 
 - Frontend pages: `src/pages/PaymentPage.jsx`, `src/pages/CreateLink.jsx`
 - Payment form UI: `src/components/PaymentForm.jsx`
-- Supabase client: `src/lib/supabase.js`
-- Serverless functions: `functions/charge.js`, `functions/create-link.js`,
+- Shared API and Supabase boundary: `server/api.js`, `supabase/migrations/`
+- Serverless entrypoints (delegate to `server/api.js`): `functions/charge.js`, `functions/create-link.js`,
   `functions/payment-link.js`, `functions/analyze-invoice.js`
 - Cloudflare Worker: `worker/src/index.js`, `worker/wrangler.toml`
-- Styling: `src/App.css`, `src/index.css`
+- Styling: `src/index.css`
 
 ## Quality Bar
 
