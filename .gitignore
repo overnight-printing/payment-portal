@@ -33,6 +33,7 @@ dist-ssr
 .wrangler/
 worker/.dev.vars
 worker/.wrangler/
+supabase/.temp/
 
 # Local review artifacts
 .preview/

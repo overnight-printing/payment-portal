@@ -36,3 +36,4 @@ T001 → shared validation/migration/handlers → US1 and US2 → UI integration
 
 - [x] T022 Allow the requested 10-character minimum staff passcode while retaining durable rate limits and short-lived sessions; keep the actual passcode out of source and examples.
 - [x] T023 Add safe staff configuration diagnostics in shared backend and sign-in UI; verify missing settings and failed rate-store behavior.
+- [x] T024 After explicit owner authorization, inspect production schema and counts, apply the Supabase migration, verify original-field checksum and grants, and confirm live staff sign-in/session/logout.

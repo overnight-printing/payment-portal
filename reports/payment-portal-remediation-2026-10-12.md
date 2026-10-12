@@ -1,6 +1,6 @@
 # Local remediation review — 12 October 2026
 
-**No commit, push, deployment or production migration was performed.** The existing uncommitted UI work was preserved and repaired in the current workspace.
+This report originally covered local review. After owner authorization, source was pushed and Cloudflare Pages deployed it. On 2026-10-12 the payment-integrity migration was applied to the production payment-portal Supabase project to restore service. Live staff sign-in, session verification and logout returned 200. Counts and a checksum of all original invoice fields matched before/after: 290 links, 206 paid and 84 pending. No real payment or email was submitted during this verification. Historical local-only statements below describe the initial review rather than the subsequent production repair.
 
 ## Review the result
 

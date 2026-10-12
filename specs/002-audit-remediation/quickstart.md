@@ -1,5 +1,7 @@
 # Local Validation and Review
 
+Production repair completed after owner authorization on 2026-10-12: applied `202610120001_payment_integrity.sql`; all four RPCs exist with service-only grants; original-field checksum and 290/206/84 total/paid/pending counts were unchanged. Live sign-in, authenticated session check and logout returned 200. No gateway charge, link creation or email send was performed during verification.
+
 Staff sign-in troubleshooting: `configuration_unavailable` now identifies invalid setting names without values. Set `APP_ENV` to lowercase `production`, supply a separate `SESSION_SECRET` of at least 32 characters and `STAFF_PASSCODE` of at least 10 characters in Pages Production, then redeploy. `staff_rate_limit_unavailable` means the Supabase connection or `portal_rate_limit` migration needs inspection; authentication remains closed. An unauthenticated `GET /staff-session` should return 401 after session configuration is valid.
 
 1. `npm install`; `npm test`; `npm run lint`; `npm run build`.

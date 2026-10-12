@@ -66,13 +66,17 @@ uses the bundled PDF.js/worker, disables eval and supports up to 20 pages.
 
 ## Required before a future release
 
-Nothing in this local review applies a migration, pushes code or deploys.
+Production repair on 2026-10-12: the payment-integrity migration was applied to
+the payment-portal Supabase project. Live staff sign-in, session verification
+and logout passed. All 290 original links and invoice fields were preserved
+(206 paid, 84 pending). Existing source pushes trigger Cloudflare Pages builds.
 
 1. Review `supabase/migrations/202610120001_payment_integrity.sql` against the
    actual `payment_links` schema and other consumers. It adds durable attempts,
    creation identity, 30-day expiry and notification state; enables link-table RLS
-   and revokes direct anon/authenticated table access. **It has not been applied
-   to your database.** Preserve attempts and financial history during rollback.
+   and revokes direct anon/authenticated table access. It is applied to the
+   production payment-portal project; inspect any other environment before
+   applying it there. Preserve attempts and financial history during rollback.
 2. Configure `APP_ENV` (`development` or `production`), `PUBLIC_ORIGIN`, service
    credentials, a staff passcode of at least 10 characters and a separate
    `SESSION_SECRET` of at least 32 random characters. Secrets belong in secret
