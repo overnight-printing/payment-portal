@@ -5,7 +5,7 @@ compatibility_date = "2026-10-12"
 # Environment Variables & Secrets required (to be added via Wrangler CLI or Cloudflare Dashboard):
 # - APP_ENV (development or production)
 # - PUBLIC_ORIGIN
-# - STAFF_PASSCODE (minimum 12 characters)
+# - STAFF_PASSCODE (minimum 10 characters)
 # - SESSION_SECRET (minimum 32 random characters)
 # - CARDPOINTE_USER
 # - CARDPOINTE_PASS

@@ -171,6 +171,8 @@ test('payment trust boundaries and durable recovery', async (t) => {
       assert.equal((await handleApi(context(req('/staff-session', { passcode: 'wrong' })))).status, 401);
       assert.equal((await handleApi(context(req('/staff-session', { passcode: 'anything' }), { STAFF_PASSCODE: '' }))).status, 503);
       assert.equal((await handleApi(context(req('/staff-session', { passcode: env.STAFF_PASSCODE }), { SESSION_SECRET: '' }))).status, 503);
+      assert.equal((await handleApi(context(req('/staff-session', { passcode: '012345678' }), { STAFF_PASSCODE: '012345678' }))).status, 503);
+      assert.equal((await handleApi(context(req('/staff-session', { passcode: '0123456789' }), { STAFF_PASSCODE: '0123456789' }))).status, 200);
       const cookie = await login(); assert.equal((await handleApi(context(req('/staff-session', undefined, cookie)))).status, 200);
       assert.equal((await handleApi(context(req('/staff-session', undefined, '__Host-portal_session=1.' + 'a'.repeat(64))))).status, 401);
       const cross = new Request('https://portal.invalid/staff-session', { method: 'POST', headers: { Origin: 'https://other.invalid', 'Content-Type': 'application/json' }, body: '{}' });

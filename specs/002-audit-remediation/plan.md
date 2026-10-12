@@ -23,7 +23,7 @@ Pre-design PASS: spec before source changes; no payment credentials persisted/lo
 ## Implementation Decisions
 A row lock on an invoice plus a unique active financial attempt gates all gateway calls. Definite declines release the attempt; timeouts, malformed approval or failed finalization remain unresolved and cannot start a second attempt. Gateway inquiry may resolve existing approved/declined attempts; unsupported/partial outcomes require merchant review.
 Creation uses a stable client request UUID and validated payload identity; email delivery is independent of record insertion and retries use a stable email idempotency key. Notification result copy distinguishes accepted, failed and not-requested.
-Staff passcodes are accepted only by a bounded login endpoint; a short-lived signed HttpOnly cookie replaces browser credential storage. Durable hashed-IP login rate limits work across instances; individual SSO is a deployment identity integration still to verify.
+Staff passcodes of at least 10 characters are accepted only by a bounded login endpoint; a short-lived signed HttpOnly cookie replaces browser credential storage. Durable hashed-IP login rate limits work across instances; individual SSO is a deployment identity integration still to verify.
 Keep old paid/pending database statuses; derive processing/review-needed status from financial attempts rather than breaking existing enum constraints. Add 30-day link expiry and explicit cancellation. New schema is tested in a fresh local PostgreSQL cluster, never on existing databases.
 
 ## Migration and rollback

@@ -7,7 +7,7 @@ CARDPOINTE_USER=
 CARDPOINTE_PASS=
 CARDPOINTE_MID=
 RESEND_API_KEY=
-# At least 12 characters; never put an actual value in this example.
+# At least 10 characters; never put an actual value in this example.
 STAFF_PASSCODE=
 # At least 32 random characters, separate from the staff passcode.
 SESSION_SECRET=

@@ -76,6 +76,7 @@ Payment link; financial attempt; staff session; login-rate bucket; reviewed invo
 - SC-002: Unknown and post-capture failures never offer an unsafe new charge.
 - SC-003: Invalid amounts/model types, duplicates and mixed recipients cannot silently become accepted billing data.
 - SC-004: Staff authentication failures never open the workspace; sessions contain no persisted reusable passcode.
+- Staff passcode configuration accepts values of at least 10 characters; rate limits and expiring sessions remain required.
 - SC-005: Normal mobile/desktop layouts do not overflow horizontally; completion and errors are keyboard-accessible.
 - SC-006: Focused checks, lint and build pass; unverified deployment/provider checks are explicitly named.
 

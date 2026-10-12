@@ -33,3 +33,5 @@
 
 ## Dependencies and execution
 T001 → shared validation/migration/handlers → US1 and US2 → UI integration → verification/preview. Sequential work in the shared tree. Focused tests use Node assert/test and an isolated PostgreSQL cluster; no test framework added. Optional research hooks do not change runtime code or trigger approvals/deployment.
+
+- [x] T022 Allow the requested 10-character minimum staff passcode while retaining durable rate limits and short-lived sessions; keep the actual passcode out of source and examples.

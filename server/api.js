@@ -122,7 +122,7 @@ async function limit(request, env, action, count = 10, seconds = 60) {
 
 async function signingKey(env) {
   config(env, ['SESSION_SECRET', 'STAFF_PASSCODE']);
-  if (env.SESSION_SECRET.length < 32 || env.STAFF_PASSCODE.length < 12) throw problem('configuration_unavailable');
+  if (env.SESSION_SECRET.length < 32 || env.STAFF_PASSCODE.length < 10) throw problem('configuration_unavailable');
   return crypto.subtle.importKey('raw', encoder.encode(`${env.SESSION_SECRET}:${env.STAFF_PASSCODE}`), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
 }
 

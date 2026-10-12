@@ -74,7 +74,7 @@ Nothing in this local review applies a migration, pushes code or deploys.
    and revokes direct anon/authenticated table access. **It has not been applied
    to your database.** Preserve attempts and financial history during rollback.
 2. Configure `APP_ENV` (`development` or `production`), `PUBLIC_ORIGIN`, service
-   credentials, a staff passcode of at least 12 characters and a separate
+   credentials, a staff passcode of at least 10 characters and a separate
    `SESSION_SECRET` of at least 32 random characters. Secrets belong in secret
    stores/ignored files, never frontend `VITE_` variables. Mock payment mode is
    disabled. The lookup response selects the corresponding production/UAT hosted field
