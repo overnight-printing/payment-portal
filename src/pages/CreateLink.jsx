@@ -265,7 +265,13 @@ export default function CreateLink() {
     try {
       const { response, data } = await apiRequest('/staff-session', postJson({ passcode: passcodeEntry }));
       if (!response.ok || data?.authenticated !== true) {
-        setPasscodeError(response.status === 429 ? 'Too many attempts. Wait a few minutes before signing in again.' : response.status >= 500 ? 'Staff access is temporarily unavailable. Contact the administrator.' : 'The passcode was not accepted. Try again.');
+        const fields = Array.isArray(data?.configuration_fields) ? data.configuration_fields.filter((name) => ['APP_ENV', 'SESSION_SECRET', 'STAFF_PASSCODE', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'].includes(name)) : [];
+        let message = response.status === 401 ? 'The passcode was not accepted. Try again.' : 'Staff access is temporarily unavailable. Contact the administrator.';
+        if (data?.code === 'configuration_unavailable' && fields.length) message = `Server setup is incomplete. Check ${fields.join(', ')} in Cloudflare Production settings, then redeploy.`;
+        else if (data?.code === 'staff_rate_limit_unavailable') message = 'The sign-in database check failed. Verify the Supabase connection and portal_rate_limit migration.';
+        else if (data?.code === 'invalid_origin') message = 'This portal address does not match PUBLIC_ORIGIN. Check the Cloudflare Production setting.';
+        else if (response.status === 429) message = 'Too many attempts. Wait a few minutes before signing in again.';
+        setPasscodeError(message);
         return;
       }
       setPasscodeEntry(''); setShowPasscode(false); setSessionReady(true);

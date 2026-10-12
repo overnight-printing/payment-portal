@@ -1,5 +1,7 @@
 # Local Validation and Review
 
+Staff sign-in troubleshooting: `configuration_unavailable` now identifies invalid setting names without values. Set `APP_ENV` to lowercase `production`, supply a separate `SESSION_SECRET` of at least 32 characters and `STAFF_PASSCODE` of at least 10 characters in Pages Production, then redeploy. `staff_rate_limit_unavailable` means the Supabase connection or `portal_rate_limit` migration needs inspection; authentication remains closed. An unauthenticated `GET /staff-session` should return 401 after session configuration is valid.
+
 1. `npm install`; `npm test`; `npm run lint`; `npm run build`.
 2. Run isolated PostgreSQL migration/concurrency checks with the documented test script; never point it at a remote/existing database.
 3. `npm run demo` starts synthetic localhost preview with staff, pending, paid, expired and processing scenarios. It cannot contact payment/email/database services. Review customer and staff flows at 375/768/1024/1440 widths, keyboard and reduced motion.

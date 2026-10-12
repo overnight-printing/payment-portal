@@ -47,6 +47,7 @@ Concurrent tabs; lost responses; gateway approval with failed database update; g
 - FR-001: Claim a durable financial attempt before any charge; preserve unknown outcomes and prevent unsafe retries.
 - FR-002: Charge only canonical positive exact amounts, validate gateway results, enforce payable status/expiry and reject raw payment input where a hosted token is required.
 - FR-003: Staff authorization fails closed, sessions expire, reusable credentials are not persisted in the browser, and login attempts are bounded across backend instances.
+- Staff sign-in configuration errors MUST identify invalid setting names without revealing their values; database rate-limit failures MUST be distinguished from incorrect passcodes.
 - FR-004: All touched APIs use explicit contracts, bounded requests, allowlisted output, sanitized errors and appropriate response headers.
 - FR-005: Validate invoice extraction at the trust boundary and require staff review for missing/conflicting billing values.
 - FR-006: Prevent duplicate/mixed batches, preserve manual corrections, bound file resources and submit only a finalized batch.

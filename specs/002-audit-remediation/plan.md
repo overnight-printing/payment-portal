@@ -27,6 +27,7 @@ Staff passcodes of at least 10 characters are accepted only by a bounded login e
 Keep old paid/pending database statuses; derive processing/review-needed status from financial attempts rather than breaking existing enum constraints. Add 30-day link expiry and explicit cancellation. New schema is tested in a fresh local PostgreSQL cluster, never on existing databases.
 
 ## Migration and rollback
+Staff sign-in diagnostics return only allowlisted configuration names and a separate rate-limit service error; React renders fixed instructions rather than raw provider output. Authentication and rate limits still fail closed.
 Prepare an additive transaction; verify existing columns/status constraints and migration preconditions before release. If migration/configuration is missing, financial/staff writes fail closed. Do not revert to the old non-idempotent charge path with unresolved attempts. Roll back serving while retaining attempts and money history; reconcile through the gateway before any new attempt.
 
 ## Complexity Tracking

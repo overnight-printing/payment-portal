@@ -1,4 +1,5 @@
 # API Contracts
+- Staff-session configuration failures retain `code: configuration_unavailable` and may include `configuration_fields`, an array of invalid names from `APP_ENV`, `SESSION_SECRET`, `STAFF_PASSCODE`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`. No values are returned. A failed login rate-store operation returns `staff_rate_limit_unavailable` (503); it never bypasses the check.
 
 All APIs return JSON, controlled `code`/`message`/safe `request_id` failures and no-store security headers. Writes require same origin; no wildcard CORS. IDs are UUIDs; amounts are positive exact decimal USD strings bounded to merchant-safe limits. Every complete operation has a deadline and input-size bound.
 

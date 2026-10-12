@@ -25,7 +25,7 @@ function fixture(options = {}) {
     const body = init.body ? JSON.parse(init.body) : null;
     requests.push({ host: url.hostname, path: url.pathname, body });
     if (url.hostname === 'database.invalid') {
-      if (url.pathname.endsWith('/portal_rate_limit')) return Response.json(options.limited ? false : true);
+      if (url.pathname.endsWith('/portal_rate_limit')) return options.rateFailure ? Response.json({}, { status: 500 }) : Response.json(options.limited ? false : true);
       if (url.pathname.endsWith('/portal_claim_payment')) {
         if (record.status === 'paid') return Response.json({ code: 'paid', retref: record.retref, paid_at: record.paid_at });
         if (attempt && ['processing', 'unknown', 'review'].includes(attempt.state)) return Response.json({ code: 'pending', attempt });
@@ -180,6 +180,23 @@ test('payment trust boundaries and durable recovery', async (t) => {
     } finally { f.restore(); }
     const limited = fixture({ limited: true });
     try { assert.equal((await handleApi(context(req('/staff-session', { passcode: env.STAFF_PASSCODE })))).status, 429); } finally { limited.restore(); }
+  });
+
+  await t.test('staff setup failures identify names without values and rate-store failure stays closed', async () => {
+    const missing = await handleApi(context(req('/staff-session'), { APP_ENV: 'Production', SESSION_SECRET: '', STAFF_PASSCODE: '' }));
+    assert.equal(missing.status, 503);
+    assert.deepEqual((await missing.json()).configuration_fields, ['APP_ENV', 'SESSION_SECRET', 'STAFF_PASSCODE']);
+    const short = await handleApi(context(req('/staff-session'), { SESSION_SECRET: 'synthetic-short' }));
+    const shortBody = await short.json();
+    assert.deepEqual(shortBody.configuration_fields, ['SESSION_SECRET']);
+    assert(!JSON.stringify(shortBody).includes('synthetic-short'));
+    const f = fixture({ rateFailure: true });
+    try {
+      const response = await handleApi(context(req('/staff-session', { passcode: env.STAFF_PASSCODE })));
+      assert.equal(response.status, 503);
+      assert.equal((await response.json()).code, 'staff_rate_limit_unavailable');
+      assert.equal(response.headers.get('Set-Cookie'), null);
+    } finally { f.restore(); }
   });
 
   await t.test('creation retry returns the same link and retains email failure', async () => {

@@ -22,16 +22,20 @@ function json(body, status = 200, headers = {}) {
   return new Response(JSON.stringify(body), { status, headers: { ...securityHeaders, ...headers } });
 }
 
-function fail(code, status, message) {
+function fail(code, status, message, configurationFields = []) {
   const requestId = crypto.randomUUID();
   if (status >= 500) console.error('Portal request failed', { code, request_id: requestId });
-  return json({ code, message, request_id: requestId }, status);
+  return json({ code, message, request_id: requestId, ...(configurationFields.length ? { configuration_fields: configurationFields } : {}) }, status);
 }
 
 function problem(code = 'service_unavailable', status = 503) {
   const error = new Error(code);
   error.status = status;
   return error;
+}
+
+function configurationProblem(fields) {
+  return Object.assign(problem('configuration_unavailable'), { configurationFields: fields });
 }
 
 async function bounded(operation, milliseconds = 12000, controller = new AbortController()) {
@@ -83,7 +87,9 @@ async function remoteJson(url, options = {}, timeout = 12000) {
 }
 
 function config(env, names) {
-  if (!['production', 'development', 'test'].includes(env.APP_ENV) || names.some((name) => !env[name])) throw problem('configuration_unavailable');
+  const fields = names.filter((name) => typeof env[name] !== 'string' || !env[name]);
+  if (!['production', 'development', 'test'].includes(env.APP_ENV)) fields.unshift('APP_ENV');
+  if (fields.length) throw configurationProblem(fields);
   if (env.MOCK_PAYMENT === 'true') throw problem('mock_payments_disabled');
 }
 
@@ -115,14 +121,15 @@ function sameOrigin(request, env) {
 
 async function limit(request, env, action, count = 10, seconds = 60) {
   config(env, ['SESSION_SECRET']);
-  if (env.SESSION_SECRET.length < 32) throw problem('configuration_unavailable');
+  if (env.SESSION_SECRET.length < 32) throw configurationProblem(['SESSION_SECRET']);
   const key = `${action}:${await digest(`${env.SESSION_SECRET}:${request.headers.get('CF-Connecting-IP') || 'local'}`)}`;
   if (await rpc(env, 'portal_rate_limit', { p_key: key, p_limit: count, p_window: seconds }) !== true) throw problem('rate_limited', 429);
 }
 
 async function signingKey(env) {
   config(env, ['SESSION_SECRET', 'STAFF_PASSCODE']);
-  if (env.SESSION_SECRET.length < 32 || env.STAFF_PASSCODE.length < 10) throw problem('configuration_unavailable');
+  const fields = [['SESSION_SECRET', 32], ['STAFF_PASSCODE', 10]].filter(([name, minimum]) => env[name].length < minimum).map(([name]) => name);
+  if (fields.length) throw configurationProblem(fields);
   return crypto.subtle.importKey('raw', encoder.encode(`${env.SESSION_SECRET}:${env.STAFF_PASSCODE}`), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
 }
 
@@ -152,7 +159,11 @@ async function session(context) {
   if (request.method === 'GET') { await authenticated(request, env); return json({ authenticated: true }); }
   sameOrigin(request, env);
   const key = await signingKey(env);
-  await limit(request, env, 'login', 5, 300);
+  try { await limit(request, env, 'login', 5, 300); }
+  catch (error) {
+    if (error.message === 'service_unavailable') throw problem('staff_rate_limit_unavailable');
+    throw error;
+  }
   const body = await bodyJson(request, 1024);
   if (typeof body.passcode !== 'string' || body.passcode.length > 200) throw problem('unauthorized', 401);
   // Compare digests so credential length/content do not short-circuit comparison.
@@ -401,7 +412,8 @@ export async function handleApi(context) {
     return fail('not_found', 404, 'This endpoint is unavailable.');
   } catch (error) {
     const status = Number.isInteger(error.status) ? error.status : 503;
-    const code = ['configuration_unavailable', 'mock_payments_disabled', 'request_timeout', 'invalid_request', 'request_too_large', 'invalid_origin', 'rate_limited', 'unauthorized', 'invalid_link', 'unavailable', 'invalid_payment', 'amount_changed', 'invalid_attachments', 'invalid_link_details', 'creation_conflict'].includes(error.message) ? error.message : 'service_unavailable';
-    return fail(code, status, status === 401 ? 'Your staff session is invalid or expired. Sign in again.' : status === 429 ? 'Too many requests. Wait a few minutes before trying again.' : status >= 500 ? 'This service is temporarily unavailable. Please try again later.' : 'Please review the request or contact the merchant for help.');
+    const code = ['configuration_unavailable', 'staff_rate_limit_unavailable', 'mock_payments_disabled', 'request_timeout', 'invalid_request', 'request_too_large', 'invalid_origin', 'rate_limited', 'unauthorized', 'invalid_link', 'unavailable', 'invalid_payment', 'amount_changed', 'invalid_attachments', 'invalid_link_details', 'creation_conflict'].includes(error.message) ? error.message : 'service_unavailable';
+    const configurationFields = new URL(request.url).pathname === '/staff-session' && code === 'configuration_unavailable' && Array.isArray(error.configurationFields) ? error.configurationFields.filter((name) => ['APP_ENV', 'SESSION_SECRET', 'STAFF_PASSCODE', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'].includes(name)) : [];
+    return fail(code, status, status === 401 ? 'Your staff session is invalid or expired. Sign in again.' : status === 429 ? 'Too many requests. Wait a few minutes before trying again.' : status >= 500 ? 'This service is temporarily unavailable. Please try again later.' : 'Please review the request or contact the merchant for help.', configurationFields);
   }
 }
