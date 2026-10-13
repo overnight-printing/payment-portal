@@ -69,3 +69,9 @@ Order: T021 → T022/T023 → T024/T025 → T026 → T027. Implementation remain
 - [x] T028 Verify production baseline, apply and record migrations 002–004, and verify original business fields/grants/RPCs.
 - [x] T029 Configure Resend webhook and matching Cloudflare Production secret; preserve existing bindings.
 - [x] T030 Commit/push reviewed changes, verify Pages release and safe live reads/webhook checks, record results in quickstart/README.
+
+## US11 Recent history and visible pagination
+- [x] T031 [US11] Specify recent-list date/page contracts and release/validation in specs/003-staff-dashboard/.
+- [x] T032 [US11] Add Seattle date helper and focused tests in src/lib/history.js and tests/history.test.js; reuse backend query validation.
+- [x] T033 [US11] Add date presets/custom dates, page sizes/counts/controls, URL state and drilldown preservation in src/pages/Dashboard.jsx and src/index.css.
+- [x] T034 [US11] Run focused browser date/pagination/mobile checks and npm test/lint/build; update README.md and specs/003-staff-dashboard/quickstart.md, then push/deploy authorized refinement.

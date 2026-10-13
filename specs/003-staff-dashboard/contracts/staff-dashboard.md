@@ -42,3 +42,5 @@ Detail/list rows add receipt_status, attention_reasons (allowlisted codes), repl
 Email status filtering matches the customer receipt for paid rows and the payment-link email for other rows, matching the visible Email column. CSV amounts remain canonical two-decimal numbers.
 
 The sent filter groups Accepted/Delivered for the relevant customer email (receipt when paid, payment link otherwise), exactly matching summary.sent and the Emails accepted overview card. Email history timestamps are labelled Attempted; delivery event timestamps remain stored separately.
+
+Recent-list UI amendment: default resolved start/end are 30 inclusive Seattle created calendar dates. Frontend range=30 (default), all or custom never reaches the API; explicit start/end URLs infer custom. UI page sizes 10/25/50 reuse existing server bound 1–50. Filters/size reset offset; browser URL preserves selections. Overview summaries remain all-time, with all-time drilldowns; list counts and CSV follow selected dates.

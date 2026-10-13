@@ -25,7 +25,7 @@ from the invoice customer. It is validated and sent to CardPointe as `name`;
 the portal does not claim issuer name-match verification. Expiration and security
 code stack on screens at most 430px wide; all inputs have bounded widths.
 
-## Staff workspace (local review)
+## Staff workspace
 
 Staff land on Overview at `/` or `/dashboard`. The same session and persistent
 navigation cover `/invoices`, `/send` and `/customers`. The staff workspace fills
@@ -37,6 +37,10 @@ and unresolved recovery lock navigation to prevent duplicate operations.
 Overview shows paid/unpaid link amounts, latest customer email accepted/delivered count, attention
 items and recent/unpaid quick views. Invoices support literal search, payment and
 email filters, Seattle created-date ranges, paging, copy and a details side panel.
+Invoice/customer lists default to the last 30 days with 25 rows per page.
+Choose 10, 25 or 50 rows, use Previous/Next, or select All time/Custom dates
+to view older records. CSV and customer drilldowns preserve the selected dates.
+Overview totals are all-time and open matching all-time history.
 Customers group by normalized email and open exact scoped invoice histories.
 History counts stored links rather than deduplicated accounting receivables.
 Cancelled/replaced links remain in history but are excluded from unpaid counts
