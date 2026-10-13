@@ -82,3 +82,5 @@ Order: T021 → T022/T023 → T024/T025 → T026 → T027. Implementation remain
 - [x] T036 [US12] Install/read upstream UI/UX Pro Max, inspect existing components/controls/assets and define retained rules in specs/003-staff-dashboard/.
 - [x] T037 [US12] Consolidate control sizing/tokens/layout in src/index.css and presentation-only wrappers/icons in src/components/StaffShell.jsx, src/components/Icon.jsx, src/pages/Dashboard.jsx and src/pages/CreateLink.jsx.
 - [x] T038 [US12] Verify responsive/accessibility geometry and existing functional flows with synthetic browser checks, run npm test/lint/build, update README.md/quickstart and publish the verified cleanup.
+
+- [x] T039 [US12] Consolidate payment filters and list counts in src/pages/Dashboard.jsx/src/index.css; verify all statuses, pagination/accessibility/mobile and lint/build/tests, document results and release.

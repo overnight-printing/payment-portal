@@ -875,7 +875,6 @@ body:has(.staff-shell) { background: var(--color-surface-muted); }
 .invoice-status-tabs button { min-width: var(--control-height); min-height: var(--control-height); border: 0; background: none; padding: 10px 12px; border-radius: var(--radius-control); color: var(--color-text); font-size: .875rem; font-weight: 600; cursor: pointer; }
 .invoice-status-tabs button:hover { background: var(--color-surface-muted); }
 .invoice-status-tabs button[aria-pressed='true'] { background: var(--color-primary-soft); color: var(--color-primary); }
-.invoice-status-tabs select { margin-left: auto; width: 180px; font-size: .875rem; }
 .records-status { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; padding: 12px 20px; font-size: .8125rem; }
 .records-status p { margin: 0; }
 .records-count { display: flex; flex: 1; flex-wrap: wrap; align-items: center; gap: 16px; min-width: 0; }
@@ -972,7 +971,7 @@ body:has(.staff-shell) { background: var(--color-surface-muted); }
   .workspace-sidebar-footer { display: none; }
   .staff-sidebar:has(.workspace-navigation.is-open) .workspace-sidebar-footer { display: flex; grid-column: 1 / -1; margin: 0; padding-top: 8px; }
   .workspace-content { padding: 24px 16px; }
-  .dashboard-filters input, .dashboard-filters select, .workspace-topbar input, .invoice-status-tabs select, .pagination-size select, .invoice-detail-link input, .copy-input { font-size: 1rem; }
+  .dashboard-filters input, .dashboard-filters select, .workspace-topbar input, .pagination-size select, .invoice-detail-link input, .copy-input { font-size: 1rem; }
   .dashboard-table { min-width: 0; }
   .records-table-region { overflow: visible; }
   .dashboard-table, .dashboard-table tbody { display: block; }
@@ -1000,7 +999,6 @@ body:has(.staff-shell) { background: var(--color-surface-muted); }
   .records-period { display: block; margin: 4px 0 0; }
   .invoice-status-tabs { padding-inline: 16px; }
   .invoice-status-tabs button { padding-inline: 8px; font-size: .8125rem; }
-  .invoice-status-tabs select { width: 100%; margin-left: 0; }
   .records-status { padding-inline: 16px; }
   .records-count .pagination-size { margin-left: 0; }
   .dashboard-pagination { padding: 16px; }
