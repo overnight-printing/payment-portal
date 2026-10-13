@@ -70,8 +70,10 @@ workspace 003, then `202610130004_staff_operations.sql`. The first integrity
 migration is already applied to production. Migrations preserve original fields
 and add service-only history/actions. Main pushes auto-deploy Cloudflare Pages.
 Owner authorized production release on 2026-10-13. Migrations 002–004 are now
-applied and verified against unchanged original invoice fields. Resend message
-read access, the webhook and matching Production secrets are configured. See [the validation guide](specs/003-staff-dashboard/quickstart.md).
+applied and verified against unchanged original invoice fields. The workspace
+and operations are deployed at https://pay.overnightprintingseattle.com/.
+Resend message reads and the signed seven-event webhook are configured and
+enabled. Older untracked delivery history remains Unknown. See [the validation guide](specs/003-staff-dashboard/quickstart.md).
 
 For live delivery tracking after an approved deployment, register
 `https://pay.overnightprintingseattle.com/resend-webhook` in Resend and subscribe

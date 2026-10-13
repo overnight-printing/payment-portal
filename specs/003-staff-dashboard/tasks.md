@@ -68,4 +68,4 @@ Order: T021 → T022/T023 → T024/T025 → T026 → T027. Implementation remain
 ## Authorized production release
 - [x] T028 Verify production baseline, apply and record migrations 002–004, and verify original business fields/grants/RPCs.
 - [x] T029 Configure Resend webhook and matching Cloudflare Production secret; preserve existing bindings.
-- [ ] T030 Commit/push reviewed changes, verify Pages release and safe live reads/webhook checks, record results in quickstart/README.
+- [x] T030 Commit/push reviewed changes, verify Pages release and safe live reads/webhook checks, record results in quickstart/README.
