@@ -18,7 +18,13 @@ function UnavailablePage() {
 
 export default function App() {
   return <BrowserRouter><Routes>
-    <Route path="/" element={<CreateLink />} />
+    <Route element={<CreateLink />}>
+      <Route path="/" />
+      <Route path="/dashboard" />
+      <Route path="/invoices" />
+      <Route path="/send" />
+      <Route path="/customers" />
+    </Route>
     <Route path="/pay/:id" element={<InvoiceRoute />} />
     <Route path="*" element={<UnavailablePage />} />
   </Routes></BrowserRouter>;

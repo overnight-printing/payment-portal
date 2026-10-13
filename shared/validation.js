@@ -71,7 +71,7 @@ export function invoiceFields(value) {
 
 export function batchIssue(invoices) {
   if (invoices.some((item) => item.status === 'scanning')) return 'Wait for every invoice to finish reading.';
-  if (invoices.some((item) => item.status !== 'success' && !item.reviewed)) return 'Review each incomplete invoice or remove it before generating a link.';
+  if (invoices.some((item) => !['success', 'review'].includes(item.status) || item.status === 'review' && !item.attachment)) return 'Remove unreadable files before generating a link.';
   const parsed = invoices.filter((item) => ['success', 'review'].includes(item.status));
   const identities = parsed.map((item) => item.orderNumber.trim().toLowerCase()).filter(Boolean);
   if (new Set(identities).size !== identities.length) return 'Duplicate invoice numbers found. Remove the duplicate or review a replacement.';
@@ -90,4 +90,45 @@ export function validPaymentLink(value) {
 
 export function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+}
+
+export const EMAIL_STATES = ['accepted', 'delivered', 'bounced', 'failed', 'delayed', 'suppressed', 'complained', 'pending', 'not_requested', 'unknown'];
+export const EMAIL_KINDS = ['payment_link', 'customer_receipt', 'staff_receipt'];
+export const ATTENTION_REASONS = ['payment_processing', 'payment_review', 'link_expired', 'email_unconfirmed', 'email_failed', 'email_bounced', 'email_suppressed', 'email_complained', 'email_delayed', 'receipt_unconfirmed', 'receipt_failed', 'receipt_bounced', 'receipt_suppressed', 'receipt_complained', 'receipt_delayed'];
+
+export function dashboardQuery(params) {
+  if ([...params.keys()].some((key) => !['search', 'payment', 'email', 'offset', 'limit', 'start', 'end', 'customer', 'view'].includes(key) || params.getAll(key).length !== 1)) return null;
+  const search = safeText(params.get('search') || '', 100);
+  const payment = params.get('payment') || 'all';
+  const email = params.get('email') || 'all';
+  const offset = params.get('offset') ?? '0';
+  const limit = params.get('limit') ?? '25';
+  const start = params.get('start') || '', end = params.get('end') || '';
+  const date = (d) => !d || /^\d{4}-\d{2}-\d{2}$/.test(d) && Number(d.slice(0, 4)) > 0 && Number.isFinite(Date.parse(d)) && new Date(d).toISOString().startsWith(d);
+  const customer = safeText(params.get('customer') || '', 300);
+  const view = params.get('view') || 'links';
+  if (search === null || !['all', 'paid', 'unpaid', 'processing', 'review', 'expired', 'cancelled', 'attention'].includes(payment) || !['all', 'sent', ...EMAIL_STATES].includes(email) || !/^\d{1,6}$/.test(offset) || Number(offset) > 100000 || !/^\d{1,2}$/.test(limit) || Number(limit) < 1 || Number(limit) > 50 || !date(start) || !date(end) || start && end && start > end || customer === null || !['links', 'customers'].includes(view)) return null;
+  return { search, payment, email, offset: Number(offset), limit: Number(limit), start, end, customer, view };
+}
+
+export function validStaffLink(link) {
+  const date = (d) => d == null || typeof d === 'string' && Number.isFinite(Date.parse(d));
+  return Boolean(link && UUID.test(link.id) && typeof link.order_number === 'string' &&
+    (link.customer_name == null || typeof link.customer_name === 'string') && (link.customer_email == null || typeof link.customer_email === 'string') &&
+    moneyCents(link.amount) !== null && date(link.created_at) && date(link.paid_at) && date(link.expires_at) && date(link.last_email_at) &&
+    ['paid', 'unpaid', 'processing', 'review', 'expired', 'cancelled'].includes(link.payment_status) && EMAIL_STATES.includes(link.email_status) && (link.receipt_status === undefined || EMAIL_STATES.includes(link.receipt_status)) &&
+    [link.replaces_link_id, link.replaced_by].every((id) => id == null || UUID.test(id)) && (link.attention_reasons === undefined || Array.isArray(link.attention_reasons) && link.attention_reasons.length <= ATTENTION_REASONS.length && link.attention_reasons.every((reason) => ATTENTION_REASONS.includes(reason))));
+}
+
+export function validStaffDetail(value) {
+  return Boolean(value && validStaffLink(value.link) && Array.isArray(value.emails) && value.emails.length <= 20 && value.emails.every((email) => UUID.test(email.request_id) && ['pending', 'accepted', 'failed'].includes(email.state) && (email.kind === undefined || EMAIL_KINDS.includes(email.kind)) && (email.delivery_status == null || ['accepted', 'delivered', 'bounced', 'failed', 'delayed', 'suppressed', 'complained'].includes(email.delivery_status)) && (email.can_check === undefined || typeof email.can_check === 'boolean') && typeof email.created_at === 'string' && Number.isFinite(Date.parse(email.created_at)) && (email.finished_at == null || typeof email.finished_at === 'string' && Number.isFinite(Date.parse(email.finished_at)))));
+}
+
+export function validDashboard(value) {
+  const integer = (n) => Number.isSafeInteger(n) && n >= 0;
+  const date = (d) => d == null || typeof d === 'string' && Number.isFinite(Date.parse(d));
+  const rows = value?.customers || value?.links;
+  return Boolean(value && value.summary && ['total', 'paid', 'unpaid', 'paid_cents', 'unpaid_cents'].every((key) => integer(value.summary[key])) && ['sent', 'attention'].every((key) => value.summary[key] === undefined || integer(value.summary[key]) && value.summary[key] <= value.summary.total) && (value.summary.cancelled === undefined || integer(value.summary.cancelled)) && value.summary.total === value.summary.paid + value.summary.unpaid + (value.summary.cancelled || 0) &&
+    integer(value.total) && value.total <= value.summary.total && integer(value.offset) && value.offset <= 100000 && integer(value.limit) && value.limit >= 1 && value.limit <= 50 &&
+    Array.isArray(rows) && rows.length <= value.limit && (value.customers ? rows.every((customer) => customer && typeof customer.key === 'string' && typeof customer.name === 'string' && (customer.email == null || typeof customer.email === 'string') && ['total', 'paid', 'unpaid', 'paid_cents', 'unpaid_cents'].every((key) => integer(customer[key])) && (customer.cancelled === undefined || integer(customer.cancelled)) && customer.total === customer.paid + customer.unpaid + (customer.cancelled || 0) && date(customer.last_created_at)) : rows.every(validStaffLink)));
 }

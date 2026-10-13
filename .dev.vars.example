@@ -11,3 +11,5 @@ RESEND_API_KEY=
 STAFF_PASSCODE=
 # At least 32 random characters, separate from the staff passcode.
 SESSION_SECRET=
+# Signing secret for the Resend webhook; copy it directly from the webhook configuration.
+RESEND_WEBHOOK_SECRET=

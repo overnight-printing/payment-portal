@@ -19,6 +19,9 @@ test('local preview uses synthetic endpoints and name validation', async () => {
     assert.equal((await payment('')).status, 400);
     const paid = await (await payment('Different Sample Cardholder')).json();
     assert.equal(paid.success, true); assert.equal(paid.receipt_sent, false);
-    assert.equal((await fetch(`${base}/payment-link?id=00000000-0000-4000-8000-000000000004`)).status, 404);
+    assert.equal((await (await fetch(`${base}/payment-link?id=00000000-0000-4000-8000-000000000004`)).json()).status, 'expired');
+    const history = await (await fetch(`${base}/staff-links`)).json();
+    assert.equal(history.links.length, 25); assert.equal(history.summary.total, 40);
+    assert.equal((await fetch(`${base}/staff-links`, { headers: { Cookie: 'preview_session=out' } })).status, 401);
   } finally { process.kill('SIGTERM'); await once(process, 'exit'); }
 });

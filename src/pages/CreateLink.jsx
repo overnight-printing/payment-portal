@@ -1,5 +1,8 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useEffectEvent } from 'react';
 import Icon from '../components/Icon';
+import Dashboard from './Dashboard';
+import { Link, useLocation } from 'react-router-dom';
+import StaffShell from '../components/StaffShell';
 
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { apiRequest, postJson, withDeadline } from '../lib/api';
@@ -117,6 +120,9 @@ function staffRequestMessage(status, context) {
 }
 
 export default function CreateLink() {
+  const { pathname } = useLocation();
+  const view = pathname === '/send' ? 'send' : pathname === '/invoices' ? 'invoices' : pathname === '/customers' ? 'customers' : 'overview';
+  const dashboard = view !== 'send';
   const [sessionReady, setSessionReady] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
   const [passcodeEntry, setPasscodeEntry] = useState('');
@@ -132,14 +138,15 @@ export default function CreateLink() {
   const [error, setError] = useState(null);
   const [createdLink, setCreatedLink] = useState('');
   const [copyStatus, setCopyStatus] = useState('idle');
-  const [billingReviewed, setBillingReviewed] = useState(false);
   const [creationUncertain, setCreationUncertain] = useState(false);
   const [emailFailed, setEmailFailed] = useState(false);
+  const [emailUnconfirmed, setEmailUnconfirmed] = useState(false);
   const [linkSummary, setLinkSummary] = useState(null);
 
   // Drag-and-drop state
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const fileInputRef = useRef(null);
+  const uploadButtonRef = useRef(null);
   const dragCounterRef = useRef(0);
   const submissionRef = useRef(false);
   const filesRef = useRef(new Map());
@@ -148,7 +155,7 @@ export default function CreateLink() {
   const requestRef = useRef(null);
 
   const resetBilling = () => {
-    setBillingEdits({}); setBillingReviewed(false);
+    setBillingEdits({});
   };
 
   const clearWorkflow = () => {
@@ -157,6 +164,7 @@ export default function CreateLink() {
     scanControllersRef.current.clear(); filesRef.current.clear();
     resetBilling(); setUploadedInvoices([]); setCreatedLink(''); setLinkSummary(null); setError(null);
     setPasscodeEntry(''); setShowPasscode(false); setCreationUncertain(false); requestRef.current = null;
+    dragCounterRef.current = 0; setIsDraggingOver(false);
     sessionStorage.removeItem('portal_creation_request');
   };
 
@@ -188,7 +196,7 @@ export default function CreateLink() {
   }, []);
 
   useEffect(() => {
-    if (!sessionReady) return;
+    if (!sessionReady || dashboard) return;
     const controller = new AbortController();
     const recover = async () => {
       const requestId = sessionStorage.getItem('portal_creation_request');
@@ -197,35 +205,35 @@ export default function CreateLink() {
         const { response, data } = await apiRequest(`/create-link?request_id=${encodeURIComponent(requestId)}`, { signal: controller.signal });
         if (controller.signal.aborted) return;
         if (response.ok && UUID.test(data?.id || '')) {
-          setCreatedLink(`${window.location.origin}/pay/${data.id}`); setLastLinkWasEmailed(data.email_sent === true); setEmailFailed(false);
+          setCreatedLink(`${window.location.origin}/pay/${data.id}`); setLastLinkWasEmailed(data.email_sent === true); setEmailFailed(data.email_status === 'failed'); setEmailUnconfirmed(['pending', 'unknown'].includes(data.email_status));
           sessionStorage.removeItem('portal_creation_request');
         } else if (response.status !== 404) setError('An earlier creation request still needs recovery. Re-enter the same billing details or contact the administrator.');
       } catch { if (!controller.signal.aborted) setError('An earlier creation request could not be checked. Retry after your connection recovers.'); }
     };
     void recover();
     return () => controller.abort();
-  }, [sessionReady]);
+  }, [sessionReady, dashboard]);
 
   const parsed = uploadedInvoices.filter((inv) => ['success', 'review'].includes(inv.status));
   const total = parsed.reduce((sum, inv) => sum + (moneyCents(inv.amount) || 0), 0);
   const first = parsed[0];
-  const defaults = { orderNumber: parsed.map((inv) => inv.orderNumber).filter(Boolean).join(', '), amount: total > 0 ? decimalAmount(total) : '', customerName: first?.customerName || '', companyName: first?.companyName || '', customerEmail: first?.customerEmail || '' };
+  const defaults = { orderNumber: parsed.every((inv) => inv.orderNumber.trim()) ? parsed.map((inv) => inv.orderNumber).join(', ') : '', amount: total > 0 && parsed.every((inv) => inv.status === 'success' && moneyCents(inv.amount) !== null) ? decimalAmount(total) : '', customerName: first?.customerName || '', companyName: first?.companyName || '', customerEmail: first?.customerEmail || '' };
   const { orderNumber, amount, customerName, companyName, customerEmail } = { ...defaults, ...billingEdits };
   const autofilledFields = new Set(Object.keys(defaults).filter((name) => defaults[name] && !(name in billingEdits)));
   const editField = (name, value) => {
-    setBillingEdits((previous) => ({ ...previous, [name]: value })); setBillingReviewed(false);
+    setBillingEdits((previous) => ({ ...previous, [name]: value }));
   };
 
   const processInvoiceFile = async (file) => {
-    if (!file || submissionRef.current || creationUncertain) return;
+    if (!file || !sessionReady || submissionRef.current || creationUncertain) return;
     if (!ACCEPTED_TYPES.includes(file.type) && !ACCEPTED_EXTENSIONS.some((ext) => file.name.toLowerCase().endsWith(ext))) { setError('Choose a PDF, PNG, JPEG or WebP invoice.'); return; }
     if (!file.size || file.size > MAX_FILE_BYTES || filesRef.current.size >= MAX_FILES || [...filesRef.current.values()].reduce((sum, item) => sum + item.file.size, file.size) > MAX_ATTACHMENT_BYTES) { setError('Use up to 5 invoices, at most 5 MB each and 10 MB total.'); return; }
     if ([...filesRef.current.values()].some((item) => item.file.name === file.name && item.file.size === file.size && item.file.lastModified === file.lastModified)) { setError('This file is already in the batch. Remove it before adding a replacement.'); return; }
     const id = crypto.randomUUID();
     const epoch = workflowRef.current;
     filesRef.current.set(id, { file, hash: '' });
-    setBillingReviewed(false); setError(null);
-    setUploadedInvoices((prev) => [...prev, { id, filename: file.name, orderNumber: '', amount: '', customerName: '', companyName: '', customerEmail: '', attachment: null, status: 'scanning', reviewed: false, message: 'Reading invoice…' }]);
+    setError(null);
+    setUploadedInvoices((prev) => [...prev, { id, filename: file.name, orderNumber: '', amount: '', customerName: '', companyName: '', customerEmail: '', attachment: null, status: 'scanning', message: 'Reading invoice…' }]);
     const controller = new AbortController();
     scanControllersRef.current.set(id, controller);
     const current = () => workflowRef.current === epoch && filesRef.current.has(id) && !controller.signal.aborted;
@@ -260,6 +268,39 @@ export default function CreateLink() {
     } finally { scanControllersRef.current.delete(id); }
   };
 
+  const onWindowFileDrag = useEffectEvent((event) => {
+    if (!Array.from(event.dataTransfer?.types || []).includes('Files')) return;
+    event.preventDefault();
+    const locked = submissionRef.current || creationUncertain;
+    if (event.type === 'drop') {
+      dragCounterRef.current = 0; setIsDraggingOver(false);
+      if (!locked) Array.from(event.dataTransfer.files).forEach(processInvoiceFile);
+    } else if (!locked) {
+      if (event.type === 'dragenter') { dragCounterRef.current++; setIsDraggingOver(true); }
+      if (event.type === 'dragleave') {
+        dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
+        if (!dragCounterRef.current) setIsDraggingOver(false);
+      }
+      if (event.type === 'dragover') event.dataTransfer.dropEffect = 'copy';
+    } else event.dataTransfer.dropEffect = 'none';
+  });
+
+  useEffect(() => {
+    if (!sessionReady || dashboard) return;
+    const handleDrag = (event) => onWindowFileDrag(event);
+    const clearDrag = () => { dragCounterRef.current = 0; setIsDraggingOver(false); };
+    const events = ['dragenter', 'dragleave', 'dragover', 'drop'];
+    events.forEach((name) => window.addEventListener(name, handleDrag));
+    window.addEventListener('blur', clearDrag);
+    window.addEventListener('dragend', clearDrag);
+    return () => {
+      events.forEach((name) => window.removeEventListener(name, handleDrag));
+      window.removeEventListener('blur', clearDrag);
+      window.removeEventListener('dragend', clearDrag);
+      dragCounterRef.current = 0;
+    };
+  }, [sessionReady, dashboard]);
+
   const handleVerifyPasscode = async (event) => {
     event.preventDefault(); setPasscodeError(null); setIsLoading(true);
     try {
@@ -289,7 +330,6 @@ export default function CreateLink() {
             <img src="/logo.png" alt="Overnight Printing Seattle" className="passcode-logo" />
           </div>
           <h1 className="passcode-title">Staff portal</h1>
-          <p className="passcode-subtitle">Please enter the staff passcode to access this page.</p>
           
           {passcodeError && (
             <div className="alert alert-error" role="alert">
@@ -326,28 +366,9 @@ export default function CreateLink() {
     );
   }
 
-  // Drag event handlers
-  const handleDragEnter = (e) => {
-    e.preventDefault();
-    dragCounterRef.current += 1;
-    setIsDraggingOver(true);
-  };
-  const handleDragLeave = (e) => {
-    e.preventDefault();
-    dragCounterRef.current -= 1;
-    if (dragCounterRef.current === 0) setIsDraggingOver(false);
-  };
-  const handleDragOver = (e) => { e.preventDefault(); };
-  const handleDrop = (e) => {
-    e.preventDefault();
-    dragCounterRef.current = 0;
-    setIsDraggingOver(false);
-    if (submissionRef.current || creationUncertain) return;
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) {
-      files.forEach(processInvoiceFile);
-    }
-  };
+  const locked = isLoading || creationUncertain;
+  if (dashboard) return <StaffShell view={view} locked={locked} onLogout={logout}>{error && <div className="alert alert-error" role="alert">{error}</div>}<Dashboard key={view} view={view} onSessionExpired={() => { void logout(false); setPasscodeError('Your staff session expired. Sign in again.'); }} /></StaffShell>;
+
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files);
     if (files.length > 0) {
@@ -360,7 +381,7 @@ export default function CreateLink() {
     event.preventDefault();
     if (submissionRef.current) return;
     const issue = batchIssue(uploadedInvoices);
-    if (!requestRef.current && (issue || !billingReviewed)) { setError(issue || 'Confirm that you reviewed the invoice, customer and amount.'); return; }
+    if (!requestRef.current && issue) { setError(issue); return; }
     submissionRef.current = true;
     const epoch = workflowRef.current;
     const shouldSendEmail = requestRef.current ? requestRef.current.send_email : event.nativeEvent.submitter?.value === 'send-email';
@@ -389,6 +410,7 @@ export default function CreateLink() {
       setLinkSummary({ orderNumber: saved.order_number, amount: saved.amount, customerEmail: saved.customer_email });
       setLastLinkWasEmailed(data.email_status === 'accepted');
       setEmailFailed(data.email_status === 'failed');
+      setEmailUnconfirmed(['pending', 'unknown'].includes(data.email_status));
       setCreatedLink(`${window.location.origin}/pay/${data.id}`);
       setCreationUncertain(false); requestRef.current = null; sessionStorage.removeItem('portal_creation_request');
       resetBilling(); filesRef.current.clear(); setUploadedInvoices([]);
@@ -396,8 +418,6 @@ export default function CreateLink() {
   };
 
   const issue = batchIssue(uploadedInvoices);
-  const locked = isLoading || creationUncertain;
-
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(createdLink);
@@ -412,54 +432,13 @@ export default function CreateLink() {
     autofilledFields.has(fieldId) ? 'input-autofilled' : '';
 
   return (
-    <main className="card staff-card fade-in">
-      <header className="staff-page-header">
-        <img src="/logo.png" alt="Overnight Printing Seattle" className="staff-brand-logo" />
-        <div className="staff-heading">
-          <p className="staff-eyebrow">Staff workspace</p>
-          <h1>Create payment link</h1>
-          <p className="subtitle">Upload invoices or enter verified billing details to create a customer checkout link.</p>
-        </div>
-        <button
-          type="button"
-          className="btn-logout"
-          disabled={isLoading || creationUncertain}
-          onClick={() => { void logout(); }}
-        >
-          <Icon name="lock" size={16} />
-          Log out
-        </button>
-      </header>
-
+    <>
+    {isDraggingOver && <div className="invoice-drop-overlay" role="status">Drop invoices to upload</div>}
+    <StaffShell view={view} locked={locked} onLogout={logout}>
+    <header className="workspace-page-heading"><h1>Send payment link</h1></header>
+    <section className="card staff-card fade-in" aria-label="Create payment link">
       <div className="staff-workspace">
-        <section className="staff-panel staff-intake-panel" aria-labelledby="invoice-intake-title">
-          <div className="staff-panel-heading">
-            <span className="staff-step" aria-hidden="true">1</span>
-            <div>
-              <h2 id="invoice-intake-title">Invoice intake</h2>
-              <p>Upload one or more invoices to fill the billing details automatically.</p>
-            </div>
-          </div>
-
-      {/* ---- Drag & Drop Zone ---- */}
-      <div
-        className={`dropzone${isDraggingOver ? ' dragging-over' : ''}`}
-        onDragEnter={handleDragEnter}
-        onDragLeave={handleDragLeave}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-        onClick={() => { if (!locked) fileInputRef.current?.click(); }}
-        role="button"
-        aria-label="Drop invoice file to auto-fill"
-        tabIndex={locked ? -1 : 0}
-        aria-disabled={locked}
-        onKeyDown={(event) => {
-          if (!locked && (event.key === 'Enter' || event.key === ' ')) {
-            event.preventDefault();
-            fileInputRef.current?.click();
-          }
-        }}
-      >
+      <div>
         <input
           ref={fileInputRef}
           type="file"
@@ -471,13 +450,10 @@ export default function CreateLink() {
           tabIndex={-1}
         />
 
-        <>
-          <span className="dropzone-icon"><Icon name="document" size={32} /></span>
-          <p className="dropzone-title">
-            {isDraggingOver ? 'Release to analyze invoices' : 'Drop invoice(s) here to auto-fill'}
-          </p>
-          <p className="dropzone-sub">PDF, PNG, JPEG or WebP · Up to 5 files, 5 MB each, 10 MB total. Always review extracted values.</p>
-        </>
+        <button ref={uploadButtonRef} type="button" className="invoice-upload-area" aria-label="Upload invoices" disabled={locked} onClick={() => fileInputRef.current?.click()}>
+          <Icon name="document" size={32} />
+          <span>Drop invoices here or click to upload</span>
+        </button>
       </div>
 
       {/* ---- Uploaded Invoices List ---- */}
@@ -502,9 +478,8 @@ export default function CreateLink() {
                   <span className="invoice-status" aria-live="polite">
                     {inv.status === 'success' 
                       ? `Invoice #${inv.orderNumber || 'Unknown'} • $${inv.amount || '0.00'}` 
-                      : inv.message}
+                      : inv.status === 'review' && inv.attachment ? 'Enter missing billing details' : inv.message}
                   </span>
-                  {inv.status === 'review' && <label className="review-check"><input type="checkbox" checked={inv.reviewed} disabled={locked || !inv.attachment} onChange={(event) => { setUploadedInvoices((prev) => prev.map((item) => item.id === inv.id ? { ...item, reviewed: event.target.checked } : item)); setBillingReviewed(false); }} />I reviewed this attachment and entered its missing billing details.</label>}
                 </div>
               </div>
               <button
@@ -513,9 +488,8 @@ export default function CreateLink() {
                   scanControllersRef.current.get(inv.id)?.abort();
                   filesRef.current.delete(inv.id);
                   setUploadedInvoices(prev => prev.filter(item => item.id !== inv.id));
-                  setBillingReviewed(false);
                   if (!filesRef.current.size) resetBilling();
-                  window.requestAnimationFrame(() => fileInputRef.current?.parentElement?.focus());
+                  window.requestAnimationFrame(() => uploadButtonRef.current?.focus());
                 }}
                 className="icon-button remove-invoice"
                 disabled={locked}
@@ -530,17 +504,6 @@ export default function CreateLink() {
 
       {issue && <div className="alert alert-warning" role="alert"><Icon name="warning" /><div><strong>Review the invoice batch</strong><p>{issue}</p></div></div>}
 
-        </section>
-
-        <section className="staff-panel staff-details-panel" aria-labelledby="billing-details-title">
-          <div className="staff-panel-heading">
-            <span className="staff-step" aria-hidden="true">2</span>
-            <div>
-              <h2 id="billing-details-title">Billing details</h2>
-              <p>Review the extracted values or enter the invoice information manually.</p>
-            </div>
-          </div>
-
       {error && (
         <div className="alert alert-error" role="alert">
           <Icon name="warning" />
@@ -549,14 +512,15 @@ export default function CreateLink() {
       )}
 
       {createdLink && (
-        <div className={`alert ${emailFailed ? 'alert-warning' : 'alert-success'} alert-stacked fade-in`} role="status" aria-live="polite">
+        <div className={`alert ${emailFailed || emailUnconfirmed ? 'alert-warning' : 'alert-success'} alert-stacked fade-in`} role="status" aria-live="polite">
           <div className="alert-heading">
             <Icon name="check" />
             <strong>Payment link generated</strong>
           </div>
           <p>
-            {emailFailed ? 'The link was created, but the customer email was not accepted. Copy the link to share it manually.' : lastLinkWasEmailed ? 'The customer email was accepted for delivery.' : 'Copy the link below to share it manually.'}
+            {emailUnconfirmed ? 'The link was created. Email status is unconfirmed; check before sending again.' : emailFailed ? 'The link was created, but the customer email was not accepted. Copy the link to share it manually.' : lastLinkWasEmailed ? 'The customer email was accepted for delivery.' : 'Copy the link below to share it manually.'}
           </p>
+          <Link className="text-button" to={`/invoices?invoice=${createdLink.split('/').at(-1)}`}>View invoice in dashboard</Link>
           {linkSummary && <p>Invoice #{linkSummary.orderNumber} · ${linkSummary.amount} USD · {linkSummary.customerEmail}</p>}
           <div className="copy-block">
             <input
@@ -580,7 +544,6 @@ export default function CreateLink() {
       )}
 
       <form onSubmit={handleSubmit} className="staff-details-form">
-        <p className="form-instructions">All fields are required unless marked optional.</p>
         <div className="staff-form-grid">
         <div className="form-group">
           <label htmlFor="orderNumber">Invoice number <span className="required-text">Required</span></label>
@@ -655,16 +618,15 @@ export default function CreateLink() {
 
         </div>
 
-        <label className="review-check billing-review"><input type="checkbox" checked={billingReviewed} disabled={locked || Boolean(issue)} onChange={(event) => setBillingReviewed(event.target.checked)} />I verified the invoice numbers, amount due and customer email against the invoices.</label>
         <div className="staff-submit-actions">
-          <button type="submit" name="submitAction" value="link-only" className="btn btn-secondary" disabled={isLoading || (!creationUncertain && (Boolean(issue) || !billingReviewed))}>
+          <button type="submit" name="submitAction" value="link-only" className="btn btn-secondary" disabled={isLoading || (!creationUncertain && Boolean(issue))}>
             {activeSubmitAction === 'link-only' ? (
               <><span className="spinner spinner-accent" aria-hidden="true" /> Generating link…</>
             ) : (
               <><Icon name="link" /> {creationUncertain ? 'Recover existing request' : 'Generate link only'}</>
             )}
           </button>
-          <button type="submit" name="submitAction" value="send-email" className="btn btn-primary" disabled={isLoading || creationUncertain || Boolean(issue) || !billingReviewed}>
+          <button type="submit" name="submitAction" value="send-email" className="btn btn-primary" disabled={isLoading || creationUncertain || Boolean(issue)}>
             {activeSubmitAction === 'send-email' ? (
               <><span className="spinner" aria-hidden="true" /> Generating & sending…</>
             ) : (
@@ -673,8 +635,9 @@ export default function CreateLink() {
           </button>
         </div>
       </form>
-        </section>
       </div>
-    </main>
+    </section>
+    </StaffShell>
+    </>
   );
 }

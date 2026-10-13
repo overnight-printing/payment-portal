@@ -1,0 +1,74 @@
+# Implementation Plan: Staff Dashboard
+
+**Branch**: `main` (local review only) | **Date**: 2026-10-12 | **Spec**: [spec.md](./spec.md)
+
+## Summary
+Create a persistent staff workspace behind the existing CreateLink session/sign-in gate. Overview at `/` and `/dashboard`, invoice history at `/invoices`, embedded creation at `/send`, customers at `/customers`, and a native invoice-details dialog. Use existing React, native controls, CSS tokens and API helpers. A single service-only Supabase read RPC returns overall summary, filtered count and a bounded page; no gateway calls. Share durable first-send/resend claim and finish operations without changing the existing six-argument link creation RPC.
+
+## Technical Context
+**Language/Version**: JavaScript ES modules, React 19.2, Vite 8; PostgreSQL 17.
+**Primary Dependencies**: Existing React Router and same-origin Cloudflare Pages/Worker adapters; no dependencies added.
+**Storage**: Add `payment_links.link_email_status` and listing RPC in migration `202610120002_staff_dashboard.sql`; workspace migration `202610120003_staff_workspace.sql` adds email requests, read view, customer/date/detail queries and claim/finish RPCs. Never edit the applied first migration.
+**Testing**: `npm test`, `npm run test:db`, `npm run lint`, `npm run build`, isolated Chrome/WebKit browser assertions and Pages compilation.
+**Target Platform**: Modern desktop/mobile browsers, Cloudflare Pages/Worker, Supabase.
+**Performance Goals**: Return at most 50 rows (UI 25); bounded search length and offset; one listing RPC snapshot. Refresh is manual; no polling.
+**Constraints**: Existing HttpOnly staff cookie, rate limits, sanitized errors, no-store responses, service-only database grants. Email accepted is not delivery confirmation.
+**Scale/Scope**: Existing few hundred links; totals count links rather than unique invoices. Same-link explicit send/resend and recorded history included. No new auth, email webhooks, accounting, refunds or charge actions.
+
+## Constitution Check
+Pre-design and post-design PASS: spec first; security maintained; explicit contracts; additive schema; no card/token/provider credentials returned; focused automated and responsive verification required. No exceptions.
+
+## Project Structure
+- `src/pages/Dashboard.jsx`: listing, summaries, query state and actions.
+- `src/pages/CreateLink.jsx`: existing sign-in/creation state reused as persistent route controller; disable invoice handlers/recovery in dashboard view; navigation and recovered email outcome.
+- `src/components/StaffShell.jsx`, `src/App.jsx`, `src/index.css`: route and responsive list/card presentation.
+- `shared/validation.js`: bounded query validation reused by shared API/preview; response validation for frontend.
+- `server/api.js`, `functions/staff-links.js`: protected GET listing and monotonic email tracking.
+- `worker/src/index.js`: unchanged delegate automatically serves shared route.
+- `supabase/migrations/202610120002_staff_dashboard.sql`: additive column/check/index, service-only read RPC.
+- `tests/portal.test.js`, `scripts/test-database.mjs`, `scripts/preview.mjs`: security, SQL, recovery and synthetic dashboard scenarios.
+
+## Implementation Decisions
+Use literal search, no dynamic SQL or user-expression interpolation. Sort newest first with stable ID ties; bound paging and Seattle created-date ranges. Customer grouping uses normalized email, missing emails separate. Summary totals ignore filters and count stored links, not receivables. Current latest acceptance count and attention count are explicit. Paid wins, unresolved payment attempts precede expiry/cancellation. Listing/detail never query the gateway.
+
+First and later emails share durable per-request claim/finish. Claim checks lifecycle and serializes same-link requests. Terminal replay returns stored state; pending replay never calls the provider. New deliberate resend gets a fresh request UUID/provider identity, reuses the existing link, changes no amount/expiry/totals. Network/5xx/write uncertainty stays pending and blocks another send. Terminal request cannot be downgraded. Latest attempt drives email status; ever-accepted boolean stays compatibility data. Original creation can include attachments, later send cannot reconstruct files. Native dialog provides focus trap/escape, copy fallback, receipt and eligible send actions. Persistent parent keeps creation edits during internal navigation and enables file drops only in /send.
+
+## Failure and Release Strategy
+Unauthorized listing returns 401 before database access; existing gate displays sign-in. Loading failures discard visible snapshots and offer Retry. Filter changes abort stale requests and reset pagination. Clipboard failure offers selectable URL. No customer history in browser storage. Migration is idempotent and leaves original business fields intact. Verify in isolated PostgreSQL. Keep all work local for review; after approval, apply/verify migration before push triggers Pages deployment. Rollback to old app leaves extra column/RPC in place.
+
+## Integrated workspace plan
+
+Reuse the existing session/creation state in CreateLink as a persistent staff controller under a pathless Router parent. Add StaffShell for real sidebar/topbar navigation; root/dashboard Overview, /invoices list, /send embedded form, /customers aggregate. Keep form state across internal navigation; enable global invoice drop only in /send. Add native dialog details panel with focus/escape return, mail action feedback and safe retry on read failure. Existing Icon/CSS/API helpers only; Arial font.
+
+Add migration `202610120003_staff_workspace.sql` after the two existing migrations. Replace the five-argument listing RPC with compatible trailing default arguments for date/customer/view, summary sent/attention metrics, allowlisted detail/history RPC, and bounded customer aggregation. Dates are Seattle days. Persist explicit email requests in a service-only table with partial unique pending-per-link index, claim/finish RPCs locking link before request. First creation email and dashboard send use these RPCs. Terminal request replay returns stored result; pending replay makes no provider call. New intentional send uses a new request UUID/provider identity. Guard eligible link lifecycle and unresolved payment attempts. Boolean is ever-accepted; latest email status derives from newest request. Pending blocks further emails, preserving uncertainty.
+
+New boundaries: GET /staff-link?id=UUID; POST /send-link-email {payment_link_id,request_id}; extended GET /staff-links {start,end,customer,view}. New Pages delegates share Worker handler. No direct browser database access. Tests cover mail concurrency/replay/paid-expired-payment lock/network and finish uncertainty, grouping/date ranges, totals unchanged, auth, mobile shell, creation inside shell, dialog focus and customer history. Production is untouched; apply all prepared migrations before any approved push.
+
+Constitution pre/post design: PASS. Read-only research agent confirmed durable request model and historical/attachment limits. No new dependencies or auth system. Optional agent-context hook skipped (managed reference already correct).
+
+## Full-window and table-density amendment
+Change staff-scoped root/shell/sidebar styles in `src/index.css` to full width, zero external spacing, square frame and 100dvh minimum height. Remove conflicting mobile bounds. Tighten table header/cell padding; use existing document/copy icons for compact invoice actions, and group customer name/email in one native link to preserve a 44px click target without stacking extra empty height. Keep mobile controls/cards usable and long fields wrapping. Update `src/pages/Dashboard.jsx`, README and quickstart; run lint/build plus Chrome/WebKit geometry and workflow assertions. No new dependencies, endpoints or migrations; constitution PASS.
+
+## Staff confirmation email amendment
+In `server/api.js`, use a small `staffReceiptBody(record)` renderer in `server/staff-receipt.js` for the staff alert call in receipts (also reusable for exact local previews); reuse the existing exact-money and escaping helpers, Arial inline table styles, and Seattle date formatting. Staff subject restores `[Paid] Invoice #… - $…`; HTML and text share a fixed labelled field array. Missing last four renders Credit card without invented digits; missing/invalid paid time renders Not recorded. Customer-facing `emailBody` and receipt acceptance/persistence/idempotency remain unchanged. All success and reconciliation paths already share receipts. Add focused synthetic capture/reconciliation/mail-content assertions in `tests/portal.test.js`, and generate local HTML/text plus desktop/mobile screenshots from intercepted synthetic emails. Run npm test/lint/build and Pages compilation. No dependency, endpoint, schema or deployment-config change; constitution PASS.
+
+## Branded customer and staff receipt amendment (supersedes prior presentation)
+Add a dedicated customer receipt export beside the staff renderer in `server/staff-receipt.js`; share only the email-safe inline table frame, logo and detail rows. Use the public HTTPS logo, original proportions on white, Arial, navy and blue; customer success/amount hero and concise date differ from compact staff summary without the Paid At (Seattle) row. Replace only the paid customer caller in receipts; simplify the remaining request-only emailBody without changing its output. Preserve recipients, provider identities, capture/reconciliation and persistence. Add focused mail-content/date/missing-data/escaping assertions; generate both exact HTML/text previews and Chrome/WebKit desktop/mobile screenshots with synthetic data. Run npm test/lint/build and Pages compilation. No schema/dependency/API changes; rollback is prior renderer/caller. Constitution PASS; local review only.
+
+Receipt refinement: reuse one inline email-safe navy header for customer/staff, center the amount, and put the check inside a bordered circle. Remove USD display labels and STAFF CONFIRMATION heading in `server/staff-receipt.js`; retain audience-specific detail rows/greeting/footer. Update existing mail assertions and both synthetic previews; run tests/lint/build and Chrome/WebKit bounds/center checks. No financial/API/config changes; constitution PASS.
+Final receipt refinements: use one display-only amount formatter in the existing receipt module and add the sanitized recorded customer/company name to staff subjects. Cover sub-thousand, thousand and million formatting plus missing-name fallback; update inbox subject assertions. API/gateway decimals remain unchanged.
+Use a small code-drawn SVG source (`public/payment-success.svg`) and its transparent PNG export (`public/payment-success.png`) for reliable email image support. Display the PNG at 56px in the shared header via HTTPS; retain Payment received text if images are blocked. Generate/export locally with the existing temporary Playwright tooling, without dependencies or changing the reference image. Preview routes supply the local asset until deployment.
+
+## Operations implementation plan
+Amend this active feature; no new branch or overwrite of prior work. Existing React/ES modules, Web Crypto and PostgreSQL suffice. Research agents were read-only (Spec Kit Phase 0); no implementation delegation. Constitution pre/post design PASS: no secret/raw payload persistence, explicit contracts, additive service-only schema, no new charge path.
+
+Add migration `202610130004_staff_operations.sql` after 001–003. Extend portal_link_emails with kind, provider_id, snapshotted recipients and delivery_status; pending uniqueness becomes invoice+kind. Add minimal allowlisted per-recipient portal_email_events with durable event dedupe. Generic claim/finish supports payment_link/customer_receipt/staff_receipt; retain old RPC wrappers. Signed tags bind request, invoice and kind to an expected recipient, covering webhook-before-response races. Monotonic terminal precedence (complaint/failure before delivered, delivered before delayed/sent), with event timestamps/ties deterministic; aggregate staff delivery only after recipient-specific facts. Later finish preserves delivery facts. Automatic receipts derive deterministic UUIDs, explicit resends use fresh UUIDs. Provider idempotency remains secondary only.
+
+Shared server/api.js handles raw bounded body, tracking ID on send, generic durable send, paid receipt recovery, signed webhook, known-ID provider check and staff inquiry-only payment check. Add small server/email-events.js for verification/status parsing and server/csv.js for quoted formula-safe export. Retain canonical money, confirmed capture validation, API allowlists and existing receipt templates. Add delegates for five staff mutations, CSV and webhook; Worker remains shared delegate.
+
+Cancellation/replacement RPCs use invoice row lock and reject active attempts. Replacement uses existing portal_create_link with a request hash bound to original; unique successor relation and stable replay. Exclude cancelled from unpaid counts/cents; preserve all history and count cancelled separately. Extend service-only view, listing/detail and a bounded filtered export RPC. UI displays link and receipt statuses/reasons/history with safe actions, inline cancel/replace confirmation, copy/new successor navigation and CSV download. Existing UI controls/font/density reused.
+
+Validate API/signature/receipt/attention/export contract tests, isolated migration twice and concurrent payment/mail/action locks, lint/build/Pages and synthetic Chrome/WebKit workflows. Update README/env setup/quickstart and local previews. Keep new code/migration local; a future approved release must register Resend webhook with signing secret and apply all prepared migrations first. Optional agent-context hooks skipped since managed reference is unchanged; no mandatory hooks configured.
+
+## Authorized production release (2026-10-13)
+Owner now requests the necessary work to get the features working. Verify current production schema/history and an aggregate original-field checksum, apply additive migrations 002–004 in order and record their versions before pushing main (Pages auto-deploy). Configure the exact Resend webhook/events and Production signing-secret binding with authenticated API/CLI; preserve existing settings. Verify release commit, assets, staff reads, authentication and webhook rejection/ignored signed events without charging cards or sending customer emails. Missing account authorization is a release blocker, not permission to bypass configuration. Rollback app only, preserving additive database and email history.

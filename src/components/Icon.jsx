@@ -1,4 +1,10 @@
 const paths = {
+  grid: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></>,
+  users: <><circle cx="9" cy="8" r="3" /><path d="M3 21v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6M17 15a5 5 0 0 1 4 5" /></>,
+  menu: <path d="M4 6h16M4 12h16M4 18h16" />,
+  search: <><circle cx="10" cy="10" r="6" /><path d="m15 15 6 6" /></>,
+  plus: <path d="M12 4v16M4 12h16" />,
+  logout: <><path d="M10 3H4v18h6M9 12h12m-4-4 4 4-4 4" /></>,
   card: (
     <>
       <rect x="3" y="5" width="18" height="14" rx="2" />

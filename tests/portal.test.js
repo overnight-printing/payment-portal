@@ -1,31 +1,77 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { handleApi } from '../server/api.js';
+import { handleApi as rawHandleApi } from '../server/api.js';
+import { invoiceCsv } from '../server/csv.js';
+import { verifyWebhook } from '../server/email-events.js';
+import { staffReceiptBody, customerReceiptBody } from '../server/staff-receipt.js';
 import worker from '../worker/src/index.js';
 import { parseInvoiceText } from '../server/invoice.js';
-import { moneyCents, gatewayCents, invoiceFields, batchIssue, validCardholderName } from '../shared/validation.js';
+import { moneyCents, gatewayCents, invoiceFields, batchIssue, validCardholderName, dashboardQuery, validDashboard, UUID } from '../shared/validation.js';
 
 const id = '00000000-0000-4000-8000-000000000001';
 const env = { APP_ENV: 'test', PUBLIC_ORIGIN: 'https://portal.invalid', SUPABASE_URL: 'https://database.invalid', SUPABASE_SERVICE_ROLE_KEY: 'synthetic-only', CARDPOINTE_USER: 'synthetic-only', CARDPOINTE_PASS: 'synthetic-only', CARDPOINTE_MID: 'synthetic-only', STAFF_PASSCODE: 'synthetic-passcode-only', SESSION_SECRET: 'synthetic-session-secret-for-local-tests-only', RESEND_API_KEY: 'synthetic-only' };
 const validPayment = { paymentLinkId: id, amount: '10.00', cardholderName: 'Jamie Cardholder', token: '9'.padEnd(16, '0'), expiry: '1299', cvv2: '000', zip: '00000' };
 const invoice = () => ({ id, order_number: 'AUDIT-001', amount: '10.00', customer_name: 'Audit Buyer', customer_email: 'audit@example.invalid', status: 'pending', retref: null, paid_at: null, expires_at: '2099-01-01T00:00:00Z', receipt_sent: false, link_email_sent: false });
 const req = (path, body, cookie) => new Request(`https://portal.invalid${path}`, { method: body === undefined ? 'GET' : 'POST', headers: { Origin: env.PUBLIC_ORIGIN, 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
-const context = (request, overrides = {}) => ({ request, env: { ...env, ...overrides }, waitUntil: () => {} });
+const background = new Set();
+const context = (request, overrides = {}) => ({ request, env: { ...env, ...overrides }, waitUntil: (promise) => { background.add(promise); promise.finally(() => background.delete(promise)); } });
+async function handleApi(ctx) { const response = await rawHandleApi(ctx); await Promise.all([...background]); return response; }
+const dashboard = () => ({ summary: { total: 1, paid: 0, unpaid: 1, paid_cents: 0, unpaid_cents: 1000 }, total: 1, offset: 0, limit: 25, links: [{ id, order_number: 'AUDIT-001', customer_name: null, customer_email: null, amount: '10.00', created_at: null, paid_at: null, payment_status: 'unpaid', email_status: 'unknown' }] });
 
 function fixture(options = {}) {
   const originalFetch = globalThis.fetch;
   let record = invoice();
-  let attempt;
+  let attempt = options.attempt;
   let creation;
   let hashes;
+  const emails = new Map();
   const requests = [];
-  const counts = { auth: 0, capture: 0, create: 0, email: 0 };
+  const counts = { auth: 0, capture: 0, create: 0, email: 0, inquiry: 0, emailCheck: 0 };
+  const events = new Set();
   globalThis.fetch = async (input, init = {}) => {
     const url = new URL(input);
     const body = init.body ? JSON.parse(init.body) : null;
-    requests.push({ host: url.hostname, path: url.pathname, body });
+    requests.push({ host: url.hostname, path: url.pathname, query: url.searchParams.toString(), body });
     if (url.hostname === 'database.invalid') {
       if (url.pathname.endsWith('/portal_rate_limit')) return options.rateFailure ? Response.json({}, { status: 500 }) : Response.json(options.limited ? false : true);
+      if (url.pathname.endsWith('/portal_staff_dashboard')) return Response.json(options.badDashboard ? { links: 'invalid' } : dashboard());
+      if (url.pathname.endsWith('/portal_staff_link')) return Response.json({ link: { ...dashboard().links[0], customer_name: record.customer_name, customer_email: record.customer_email, expires_at: record.expires_at, email_status: record.link_email_status || 'unknown' }, emails: [...emails.values()].map(({ request_id, state, created_at, finished_at }) => ({ request_id, state, created_at, finished_at })) });
+      if (url.pathname.endsWith('/portal_claim_email')) {
+        const existing = emails.get(body.p_request_id);
+        if (existing) return Response.json(existing.payment_link_id === body.p_link_id && existing.kind === body.p_kind ? { code: 'existing', state: existing.state } : { code: 'conflict' });
+        const current = { ...record, ...options.record };
+        if (body.p_kind === 'payment_link' ? current.status !== 'pending' || Date.parse(current.expires_at) <= Date.now() || current.cancelled_at || attempt && ['processing', 'unknown', 'review'].includes(attempt.state) : current.status !== 'paid') return Response.json({ code: 'unavailable' });
+        if ([...emails.values()].some((email) => email.state === 'pending' && email.kind === body.p_kind)) return Response.json({ code: 'pending', state: 'pending' });
+        emails.set(body.p_request_id, { request_id: body.p_request_id, payment_link_id: body.p_link_id, kind: body.p_kind, recipients: body.p_kind === 'staff_receipt' ? ['accounting@overnightprintingseattle.com','contact@overnightprintingseattle.com'] : [current.customer_email], state: 'pending', created_at: new Date().toISOString(), finished_at: null });
+        if (body.p_kind === 'payment_link') { record.link_email_status = 'pending'; if (creation) creation.link_email_status = 'pending'; }
+        return Response.json({ code: 'claimed', state: 'pending' });
+      }
+      if (url.pathname.endsWith('/portal_finish_email')) {
+        if (options.failEmailTracking) return Response.json({}, { status: 500 });
+        const email = emails.get(body.p_request_id);
+        if (email.state === 'pending') { email.state = body.p_state; email.finished_at = body.p_state === 'pending' ? null : new Date().toISOString(); }
+        email.provider_id ||= body.p_provider_id;
+        if (email.kind === 'payment_link') { record.link_email_status = email.state; record.link_email_sent ||= email.state === 'accepted'; if (creation) creation = { ...creation, link_email_status: email.state, link_email_sent: record.link_email_sent }; }
+        if (email.kind === 'customer_receipt' && email.state === 'accepted') record.receipt_sent = true;
+        return Response.json({ state: email.state });
+      }
+      if (url.pathname.endsWith('/portal_record_email_event')) {
+        if (options.eventFailure) return Response.json({}, { status: 500 });
+        const email = emails.get(body.p_request_id) || [...emails.values()].find((e) => e.provider_id === body.p_provider_id);
+        if (!email || email.payment_link_id !== body.p_link_id || email.kind !== body.p_kind || email.provider_id && email.provider_id !== body.p_provider_id || !body.p_recipients.every((to) => email.recipients.includes(to))) return Response.json({ code: 'ignored' });
+        if (!events.has(body.p_event_id)) { events.add(body.p_event_id); email.delivery_status = body.p_status; email.state = 'accepted'; email.provider_id = body.p_provider_id; }
+        return Response.json({ code: 'recorded', state: email.delivery_status });
+      }
+      if (url.pathname.endsWith('/portal_link_emails')) {
+        const email = emails.get(url.searchParams.get('request_id')?.slice(3));
+        return Response.json(email && email.payment_link_id === url.searchParams.get('payment_link_id')?.slice(3) ? [email] : []);
+      }
+      if (url.pathname.endsWith('/portal_cancel_link')) {
+        if ((options.record?.status || record.status) === 'paid' || attempt && ['processing','unknown','review'].includes(attempt.state)) return Response.json({ code: 'unavailable' });
+        record.cancelled_at ||= new Date().toISOString(); return Response.json({ code: 'cancelled', id: record.id });
+      }
+      if (url.pathname.endsWith('/portal_replace_link')) return Response.json(options.actionBlocked ? {code:'unavailable'} : { code: 'replaced', id: '80000000-0000-4000-8000-000000000001' });
+      if (url.pathname.endsWith('/portal_staff_export')) return Response.json(options.exportTooLarge ? { code: 'too_many' } : { links: Array.from({length:60}, (_,i)=>({...dashboard().links[0], order_number:`CSV-${i}`, customer_name:'=HYPERLINK("bad")'})) });
       if (url.pathname.endsWith('/portal_claim_payment')) {
         if (record.status === 'paid') return Response.json({ code: 'paid', retref: record.retref, paid_at: record.paid_at });
         if (attempt && ['processing', 'unknown', 'review'].includes(attempt.state)) return Response.json({ code: 'pending', attempt });
@@ -43,13 +89,17 @@ function fixture(options = {}) {
       }
       if (url.pathname.endsWith('/portal_create_link')) {
         if (creation && hashes !== body.p_hash) return Response.json({ code: 'conflict' });
-        if (!creation) { counts.create++; hashes = body.p_hash; creation = { ...record, request_id: body.p_request_id, customer_name: body.p_customer_name, customer_email: body.p_customer_email, order_number: body.p_order_number, amount: body.p_amount }; }
+        if (!creation) { counts.create++; hashes = body.p_hash; creation = { ...record, request_id: body.p_request_id, customer_name: body.p_customer_name, customer_email: body.p_customer_email, order_number: body.p_order_number, amount: body.p_amount }; record = creation; }
         return Response.json({ code: 'created', link: creation });
       }
       if (url.pathname.endsWith('/payment_attempts')) return Response.json(attempt && ['processing', 'unknown', 'review'].includes(attempt.state) ? [attempt] : []);
       if (url.pathname.endsWith('/payment_links')) {
-        if (init.method === 'PATCH') { record = { ...record, ...body }; return Response.json([record]); }
-        return Response.json([options.record ? { ...record, ...options.record } : record]);
+        if (init.method === 'PATCH') {
+          if (options.failEmailTracking && body.link_email_status === 'accepted') return Response.json({}, { status: 500 });
+          if (url.searchParams.get('link_email_sent') === 'eq.false' && (creation || record).link_email_sent) return Response.json([]);
+          record = { ...record, ...body }; if (creation) creation = { ...creation, ...body }; return Response.json([record]);
+        }
+        return Response.json([options.record ? { ...record, ...options.record } : creation || record]);
       }
     }
     if (url.hostname === 'fts-uat.cardconnect.com') {
@@ -60,12 +110,18 @@ function fixture(options = {}) {
         return Response.json(options.authorization || { respstat: 'A', retref: '123456789012', amount: '1000' });
       }
       if (url.pathname.endsWith('/capture')) { counts.capture++; return Response.json(options.capture || { respstat: 'A', retref: '123456789012', amount: '10.00', setlstat: 'Queued for Capture' }); }
-      if (url.pathname.includes('/inquireByOrderid/')) return Response.json(options.inquiry || { respstat: 'B' });
+      if (url.pathname.includes('/inquireByOrderid/')) { counts.inquiry++; return Response.json(options.inquiry || { respstat: 'B' }); }
     }
-    if (url.hostname === 'api.resend.com') { counts.email++; return Response.json(options.emailFailure ? {} : { id: 'synthetic-email' }, { status: options.emailFailure ? 500 : 200 }); }
+    if (url.hostname === 'api.resend.com') {
+      if (!init.method || init.method === 'GET') { counts.emailCheck++; const email = [...emails.values()].find((e)=>e.provider_id === url.pathname.split('/').at(-1)); return Response.json({ id: email?.provider_id, to: email?.recipients, last_event: 'delivered', tags: [{name:'portal_app',value:'payment_portal'},{name:'portal_request',value:email?.request_id},{name:'portal_link',value:email?.payment_link_id},{name:'portal_kind',value:email?.kind}], ...options.emailRetrieval }); }
+      counts.email++;
+      if (options.concurrentEmailAccepted) { record = { ...record, link_email_sent: true, link_email_status: 'accepted' }; creation = { ...creation, link_email_sent: true, link_email_status: 'accepted' }; const email = [...emails.values()].at(-1); if (email) email.state = 'accepted'; }
+      if (options.emailNetworkFailure) throw new Error('Synthetic network failure');
+      return Response.json(options.emailFailure ? {} : { id: crypto.randomUUID() }, { status: options.emailFailure ? 422 : 200 });
+    }
     throw new Error('Unexpected external request blocked by test');
   };
-  return { counts, requests, record: () => record, attempt: () => attempt, restore: () => { globalThis.fetch = originalFetch; } };
+  return { counts, requests, emails, events, record: () => record, attempt: () => attempt, restore: () => { globalThis.fetch = originalFetch; } };
 }
 
 async function login() {
@@ -130,7 +186,71 @@ test('payment trust boundaries and durable recovery', async (t) => {
       const result = await response.json();
       assert.equal(result.status, 'paid'); assert.equal(result.receipt_sent, true);
       assert.equal(f.counts.auth, 1); assert.equal(f.counts.capture, 1);
+      assert.equal(f.requests.find((r) => r.body?.from?.startsWith('Billing Alerts')).body.subject, '[Paid] Audit Buyer - Invoice #AUDIT-001 - $10.00');
     } finally { f.restore(); }
+  });
+
+  await t.test('distinct branded confirmations expose escaped, copyable payment details', async () => {
+    const f = fixture({ record: { order_number: 'AUDIT-001, AUDIT-002', amount: '2596.96', customer_name: 'Sample & Co. (Printing <Studio>)', customer_email: 'billing@example.invalid', paid_at: '2026-10-13T17:05:09Z', card_last4: '1234' }, authorization: { respstat: 'A', retref: '123456789012', amount: '259696' }, capture: { respstat: 'A', retref: '123456789012', amount: '2596.96', setlstat: 'Queued for Capture' } });
+    try {
+      assert.equal((await handleApi(context(req('/charge', { ...validPayment, amount: '2596.96' })))).status, 200);
+      const staff = f.requests.find((r) => r.body?.from?.startsWith('Billing Alerts')).body;
+      const customer = f.requests.find((r) => r.body?.to?.includes('billing@example.invalid')).body;
+      assert.equal(staff.subject, '[Paid] Sample & Co. (Printing <Studio>) - Invoice #AUDIT-001, AUDIT-002 - $2,596.96');
+      assert.deepEqual(staff.to, ['accounting@overnightprintingseattle.com', 'contact@overnightprintingseattle.com']);
+      for (const value of ['Invoice Number(s): AUDIT-001, AUDIT-002', 'Amount Paid: $2,596.96', 'Customer / Company: Sample & Co. (Printing <Studio>)', 'Customer Email: billing@example.invalid', 'Payment Reference: 123456789012', 'Payment Method: Credit card ending in 1234']) assert(staff.text.includes(value));
+      assert(staff.html.includes('<th')); assert(staff.html.includes('scope="row"')); assert(staff.html.includes('Sample &amp; Co. (Printing &lt;Studio&gt;)')); assert(!staff.html.includes('<Studio>'));
+      assert(!staff.html.includes('Hello ')); assert(!staff.text.includes(validPayment.token));
+      assert.equal(customer.subject, 'Payment received: Invoice #AUDIT-001, AUDIT-002');
+      assert.deepEqual(customer.to, ['billing@example.invalid']);
+      assert(customer.html.includes('Hello Sample &amp; Co.'));
+      for (const mail of [staff, customer]) {
+        assert(mail.html.includes('https://pay.overnightprintingseattle.com/logo.png'));
+        assert(mail.html.includes('alt="Overnight Printing Seattle"'));
+        assert(mail.html.includes('Arial,Helvetica,sans-serif'));
+        assert(mail.html.includes('#1e2f66'));
+        assert(!mail.html.includes('<Studio>')); assert(!mail.text.includes(validPayment.token));
+        assert(!mail.text.includes('Paid At')); assert(!mail.html.includes('Paid At'));
+      }
+      for (const mail of [staff, customer]) {
+        assert(!mail.html.includes('STAFF CONFIRMATION'));
+        assert(!mail.html.includes('USD')); assert(!mail.text.includes('USD'));
+        assert(mail.html.includes('https://pay.overnightprintingseattle.com/payment-success.png'));
+        assert(mail.html.includes('text-align:center'));
+      }
+      assert(!staff.text.includes('Payment Date'));
+      for (const value of ['Amount Paid: $2,596.96', 'Invoice Number(s): AUDIT-001, AUDIT-002', 'Payment Reference: 123456789012', 'Payment Method: Credit card ending in 1234', 'Payment Date: Oct 13, 2026']) assert(customer.text.includes(value));
+      assert(!customer.text.includes('PDT')); assert(!customer.html.includes('Internal payment confirmation'));
+    } finally { f.restore(); }
+    for (const record of [{ card_last4: null, paid_at: null }, { card_last4: 'invalid', paid_at: 'invalid' }, { card_last4: null, paid_at: '2026-01-13T18:05:09Z' }]) {
+      const f = fixture({ record });
+      try {
+        assert.equal((await handleApi(context(req('/charge', validPayment)))).status, 200);
+        const staff = f.requests.find((r) => r.body?.from?.startsWith('Billing Alerts')).body;
+        const customer = f.requests.find((r) => r.body?.to?.includes('audit@example.invalid')).body;
+        assert(staff.text.includes('Payment Method: Credit card\n')); assert(!staff.text.includes('ending in'));
+        assert(!staff.text.includes('Paid At')); assert(!staff.text.includes('Payment Date'));
+        assert(customer.text.includes('Payment Method: Credit card\n')); assert(!customer.text.includes('ending in'));
+        assert.equal(customer.text.includes('Payment Date:'), record.paid_at?.startsWith('2026') === true);
+        if (record.paid_at?.startsWith('2026')) assert(customer.text.includes('Payment Date: Jan 13, 2026'));
+        assert(!customer.html.includes('Invalid Date'));
+      } finally { f.restore(); }
+    }
+  });
+
+  await t.test('receipt amounts are grouped without changing cents and staff subjects identify the customer', () => {
+    for (const [amount, formatted] of [['999.99', '999.99'], ['1000.00', '1,000.00'], ['2596.96', '2,596.96'], ['1000000.00', '1,000,000.00']]) {
+      const record = { ...invoice(), amount, customer_name: '  Example   Company  ' };
+      const staff = staffReceiptBody(record);
+      assert.equal(staff.subject, `[Paid] Example Company - Invoice #AUDIT-001 - $${formatted}`);
+      for (const mail of [staff, customerReceiptBody(record)]) {
+        assert(mail.text.includes(`Amount Paid: $${formatted}\n`));
+        assert(mail.html.includes(`$${formatted}`));
+      }
+    }
+    for (const customer_name of [null, '', 'Example\r\nInjected header']) {
+      assert.equal(staffReceiptBody({ ...invoice(), customer_name }).subject, '[Paid] Customer - Invoice #AUDIT-001 - $10.00');
+    }
   });
 
   await t.test('a definite declined authorization is recoverable', async () => {
@@ -209,6 +329,9 @@ test('payment trust boundaries and durable recovery', async (t) => {
         assert.equal(response.status, 200); assert.equal(result.id, id); assert.equal(result.email_status, 'failed');
       }
       assert.equal(f.counts.create, 1);
+      assert.equal(f.record().link_email_status, 'failed');
+      const recovered = await (await handleApi(context(req(`/create-link?request_id=${body.request_id}`, undefined, cookie)))).json();
+      assert.equal(recovered.email_status, 'failed');
       const email = f.requests.find((r) => r.host === 'api.resend.com').body;
       assert(email.html.includes('&lt;b&gt;Literal name&lt;/b&gt;')); assert(!email.html.includes('<b>Literal name</b>')); assert(email.text.includes('<b>Literal name</b>'));
       assert.equal((await handleApi(context(req('/create-link', { ...body, amount: '-1.00' }, cookie)))).status, 400);
@@ -217,14 +340,246 @@ test('payment trust boundaries and durable recovery', async (t) => {
     } finally { f.restore(); }
   });
 
+  await t.test('dashboard queries and snapshots are bounded, nullable and literal', () => {
+    assert.equal(dashboardQuery(new URLSearchParams('search=%25_%27')).search, "%_'");
+    assert.equal(dashboardQuery(new URLSearchParams()).limit, 25);
+    for (const query of ['offset=-1', 'limit=51', 'offset=1.5', 'offset=100001', 'limit=0', 'payment=bogus', 'email=bogus', 'limit=1&limit=2', `search=${'x'.repeat(101)}`]) assert.equal(dashboardQuery(new URLSearchParams(query)), null);
+    assert(validDashboard(dashboard()));
+    assert(!validDashboard({ ...dashboard(), links: [{ ...dashboard().links[0], amount: '-10.00' }] }));
+    assert(!validDashboard({ ...dashboard(), summary: { ...dashboard().summary, unpaid_cents: Infinity } }));
+  });
+
+  await t.test('dashboard requires staff session and rejects bad filters before listing', async () => {
+    const f = fixture();
+    try {
+      assert.equal((await handleApi(context(req('/staff-links')))).status, 401);
+      assert.equal(f.requests.length, 0);
+      const cookie = await login();
+      assert.equal((await handleApi(context(req('/staff-links?limit=1000', undefined, cookie)))).status, 400);
+      const response = await handleApi(context(req('/staff-links?search=%25_%27&payment=unpaid&email=unknown', undefined, cookie)));
+      assert.equal(response.status, 200); assert.equal(response.headers.get('Cache-Control'), 'no-store');
+      assert.deepEqual(await response.json(), dashboard());
+      const body = f.requests.find((r) => r.path.endsWith('/portal_staff_dashboard')).body;
+      assert.equal(body.p_search, "%_'"); assert.equal(body.p_payment, 'unpaid');
+      assert.equal(f.counts.auth + f.counts.capture + f.counts.email, 0);
+    } finally { f.restore(); }
+  });
+
+  await t.test('dashboard malformed data and rate limits fail closed', async () => {
+    for (const option of [{ badDashboard: true }, { limited: true }]) {
+      const limited = option.limited; option.limited = false;
+      const f = fixture(option);
+      try {
+        const cookie = await login();
+        option.limited = limited;
+        const response = await handleApi(context(req('/staff-links', undefined, cookie)));
+        assert.equal(response.status, option.limited ? 429 : 503);
+        assert.equal((await response.json()).links, undefined);
+      } finally { f.restore(); }
+    }
+  });
+
+  await t.test('email tracking survives accepted retry and link-only recovery', async () => {
+    for (const send of [true, false]) {
+      const f = fixture();
+      try {
+        const cookie = await login();
+        const body = { request_id: crypto.randomUUID(), order_number: 'EMAIL-TEST', amount: '10.00', customer_name: 'Synthetic buyer', customer_email: 'buyer@example.invalid', send_email: send };
+        for (let i = 0; i < 2; i++) assert.equal((await (await handleApi(context(req('/create-link', body, cookie)))).json()).email_status, send ? 'accepted' : 'not_requested');
+        assert.equal(f.counts.email, send ? 1 : 0);
+        assert.equal(f.record().link_email_status, send ? 'accepted' : 'not_requested');
+        assert(f.requests.filter((r) => r.body?.link_email_status).every((r) => new URLSearchParams(r.query).get('link_email_status') === 'eq.unknown'));
+      } finally { f.restore(); }
+    }
+    const f = fixture({ failEmailTracking: true });
+    try {
+      const cookie = await login(); const requestId = crypto.randomUUID();
+      const response = await handleApi(context(req('/create-link', { request_id: requestId, order_number: 'EMAIL-TEST', amount: '10.00', customer_name: 'Synthetic buyer', customer_email: 'buyer@example.invalid', send_email: true }, cookie)));
+      assert.equal((await response.json()).email_status, 'pending');
+      assert.equal(f.record().link_email_status, 'pending');
+      assert.equal((await (await handleApi(context(req(`/create-link?request_id=${requestId}`, undefined, cookie)))).json()).email_status, 'pending');
+    } finally { f.restore(); }
+  });
+
+  await t.test('an ambiguous email response remains unconfirmed', async () => {
+    const f = fixture({ emailNetworkFailure: true });
+    try {
+      const cookie = await login();
+      const response = await handleApi(context(req('/create-link', { request_id: crypto.randomUUID(), order_number: 'EMAIL-TEST', amount: '10.00', customer_name: 'Synthetic buyer', customer_email: 'buyer@example.invalid', send_email: true }, cookie)));
+      assert.equal((await response.json()).email_status, 'pending');
+      assert.equal(f.record().link_email_status, 'pending');
+    } finally { f.restore(); }
+  });
+
+  await t.test('staff mail actions claim once, replay safely and reuse the existing link', async () => {
+    const f = fixture();
+    try {
+      assert.equal((await handleApi(context(req('/send-link-email', { payment_link_id: id, request_id: crypto.randomUUID() })))).status, 401);
+      assert.equal((await handleApi(context(req(`/staff-link?id=${id}`)))).status, 401);
+      const cookie = await login(); const body = { payment_link_id: id, request_id: crypto.randomUUID() };
+      const results = await Promise.all([handleApi(context(req('/send-link-email', body, cookie))), handleApi(context(req('/send-link-email', body, cookie)))]);
+      assert(results.every((r) => r.status === 200)); assert.equal(f.counts.email, 1); assert.equal(f.counts.create, 0);
+      assert.equal((await (await handleApi(context(req('/send-link-email', body, cookie)))).json()).email_status, 'accepted');
+      assert.equal(f.counts.email, 1);
+      const detail = await (await handleApi(context(req(`/staff-link?id=${id}`, undefined, cookie)))).json(); assert.equal(detail.emails.length, 1);
+      await handleApi(context(req('/send-link-email', { ...body, request_id: crypto.randomUUID() }, cookie))); assert.equal(f.counts.email, 2); assert.equal(f.record().amount, '10.00');
+      const keys = f.requests.filter((r) => r.host === 'api.resend.com'); assert.equal(keys.length, 2);
+      const foreign = new Request('https://portal.invalid/send-link-email', { method: 'POST', headers: { Origin: 'https://foreign.invalid', Cookie: cookie, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      assert.equal((await handleApi(context(foreign))).status, 403);
+      for (const query of ['start=2026-02-30', 'start=2026-10-13&end=2026-10-12', 'view=bogus']) assert.equal(dashboardQuery(new URLSearchParams(query)), null);
+    } finally { f.restore(); }
+  });
+
+  await t.test('unknown email locks survive new request IDs and reject paid or expired mail', async () => {
+    for (const option of [{ emailNetworkFailure: true }, { record: { status: 'paid' } }, { record: { expires_at: '2020-01-01' } }]) {
+      const f = fixture(option);
+      try {
+        const cookie = await login(); const body = { payment_link_id: id, request_id: crypto.randomUUID() };
+        const first = await handleApi(context(req('/send-link-email', body, cookie)));
+        if (option.emailNetworkFailure) {
+          assert.equal((await first.json()).email_status, 'pending');
+          for (const request_id of [body.request_id, crypto.randomUUID()]) assert.equal((await (await handleApi(context(req('/send-link-email', { ...body, request_id }, cookie)))).json()).email_status, 'pending');
+          assert.equal(f.counts.email, 1);
+        } else { assert.equal(first.status, 409); assert.equal(f.counts.email, 0); }
+      } finally { f.restore(); }
+    }
+  });
+
+  await t.test('a concurrently accepted email cannot be downgraded by a failed retry', async () => {
+    const f = fixture({ emailFailure: true, concurrentEmailAccepted: true });
+    try {
+      const cookie = await login();
+      const response = await handleApi(context(req('/create-link', { request_id: crypto.randomUUID(), order_number: 'EMAIL-TEST', amount: '10.00', customer_name: 'Synthetic buyer', customer_email: 'buyer@example.invalid', send_email: true }, cookie)));
+      assert.equal((await response.json()).email_status, 'accepted');
+      assert.equal(f.record().link_email_status, 'accepted');
+    } finally { f.restore(); }
+  });
+
+  await t.test('paid receipts claim once, replay durably and never recharge or alert staff on resend', async () => {
+    const f = fixture({ record: { status: 'paid', retref: '123456789012', paid_at: '2026-10-13T17:00:00Z' } });
+    try {
+      const cookie = await login(), body = { payment_link_id: id, request_id: crypto.randomUUID() };
+      const results = await Promise.all([handleApi(context(req('/send-receipt-email', body, cookie))),handleApi(context(req('/send-receipt-email', body, cookie)))]);
+      assert(results.every(r=>r.status===200)); assert.equal(f.counts.email,1);
+      const message = f.requests.find(r=>r.host==='api.resend.com'&&r.body).body;
+      assert.equal(message.subject,'Payment received: Invoice #AUDIT-001'); assert.deepEqual(message.to,['audit@example.invalid']);
+      f.emails.get(body.request_id).created_at='2000-01-01T00:00:00Z';
+      await handleApi(context(req('/send-receipt-email', body, cookie))); assert.equal(f.counts.email,1);
+      await handleApi(context(req('/send-receipt-email', {...body,request_id:crypto.randomUUID()}, cookie))); assert.equal(f.counts.email,2);
+      assert.equal(f.counts.auth+f.counts.capture+f.counts.create,0); assert.equal(f.record().amount,'10.00');
+    }finally{f.restore();}
+    for(const options of [{},{record:{status:'paid'},emailNetworkFailure:true}]) {
+      const f=fixture(options);
+      try {
+        const cookie=await login(),body={payment_link_id:id,request_id:crypto.randomUUID()};
+        const result=await handleApi(context(req('/send-receipt-email',body,cookie)));
+        if(!options.record) {assert.equal(result.status,409);assert.equal(f.counts.email,0);}
+        else {
+          assert.equal((await result.json()).email_status,'pending');
+          await handleApi(context(req('/send-receipt-email',{...body,request_id:crypto.randomUUID()},cookie)));assert.equal(f.counts.email,1);
+          const check=await handleApi(context(req('/check-email-status',{payment_link_id:id,email_request_id:body.request_id},cookie)));
+          assert.equal((await check.json()).code,'provider_review'); assert.equal(f.counts.emailCheck,0);
+        }
+      }finally{f.restore();}
+    }
+    const failed=fixture({failEmailTracking:true});
+    try {const response=await handleApi(context(req('/charge',validPayment)));assert.equal(response.status,200);assert.equal((await response.json()).receipt_sent,false);assert.equal(failed.record().status,'paid');}finally{failed.restore();}
+  });
+
+  await t.test('signed webhooks verify exact bytes/time, bind recipients and survive persistence failure', async () => {
+    // Public Svix documentation vector, not a portal credential.
+    const vectorSecret='whsec_plJ3nmyCDGBKInavdOK15jsl',vectorBody='{"event_type":"ping","data":{"success":true}}';
+    const vectorReq=new Request('https://portal.invalid/resend-webhook',{method:'POST',headers:{'svix-id':'msg_loFOjxBNrRLzqYUf','svix-timestamp':'1731705121','svix-signature':'v1,rAvfW3dJ/X/qxhsaXPOyyCGmRKsaKWcsNccKXlIktD0='}});
+    assert.equal((await verifyWebhook(vectorReq,vectorBody,vectorSecret,1731705121000)).event,null);
+    const secret=`whsec_${btoa('synthetic-webhook-key-for-tests')}`;
+    const sign=async (payload,event='msg_test',stamp=String(Math.floor(Date.now()/1000)))=>{
+      const text=JSON.stringify(payload),key=await crypto.subtle.importKey('raw',new TextEncoder().encode('synthetic-webhook-key-for-tests'),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+      const bytes=new Uint8Array(await crypto.subtle.sign('HMAC',key,new TextEncoder().encode(`${event}.${stamp}.${text}`)));
+      return new Request('https://portal.invalid/resend-webhook',{method:'POST',headers:{'Content-Type':'application/json','svix-id':event,'svix-timestamp':stamp,'svix-signature':`v2,ignored v1,A v1,${btoa(String.fromCharCode(...bytes))}`},body:text});
+    };
+    const f=fixture({record:{status:'paid'}});
+    try {
+      const cookie=await login(),request_id=crypto.randomUUID();
+      await handleApi(context(req('/send-receipt-email',{payment_link_id:id,request_id},cookie)));
+      const mail=f.emails.get(request_id);
+      const event={type:'email.delivered',created_at:new Date().toISOString(),data:{email_id:mail.provider_id,to:['audit@example.invalid'],tags:{portal_app:'payment_portal',portal_request:request_id,portal_link:id,portal_kind:'customer_receipt'}}};
+      const bad=await sign(event);const altered=new Request(bad,{body:JSON.stringify(event)+' '});
+      assert.equal((await handleApi(context(altered,{RESEND_WEBHOOK_SECRET:secret}))).status,400);
+      for(const stamp of [String(Math.floor(Date.now()/1000)-301),String(Math.floor(Date.now()/1000)+301)]) assert.equal((await handleApi(context(await sign(event,'msg_stale',stamp),{RESEND_WEBHOOK_SECRET:secret}))).status,400);
+      for(let i=0;i<2;i++) assert.equal((await handleApi(context(await sign(event),{RESEND_WEBHOOK_SECRET:secret}))).status,200);
+      assert.equal(f.events.size,1);assert.equal(mail.delivery_status,'delivered');assert.equal(f.record().status,'pending');
+      const wrong={...event,data:{...event.data,to:['other@example.invalid']}};
+      await handleApi(context(await sign(wrong,'msg_wrong'),{RESEND_WEBHOOK_SECRET:secret}));assert.equal(f.events.size,1);
+      assert.equal(f.counts.email,1); assert.equal(f.counts.auth+f.counts.capture,0);
+      const check=await handleApi(context(req('/check-email-status',{payment_link_id:id,email_request_id:request_id},cookie)));
+      assert.equal((await check.json()).email_status,'delivered'); assert.equal(f.counts.emailCheck,1); assert.equal(f.counts.email,1);
+    }finally{f.restore();}
+    const failure=fixture({eventFailure:true});
+    try {
+      const payload={type:'email.sent',created_at:new Date().toISOString(),data:{email_id:crypto.randomUUID(),to:['audit@example.invalid']}};
+      const response=await handleApi(context(await sign(payload),{RESEND_WEBHOOK_SECRET:secret}));assert.equal(response.status,503);assert(!(await response.text()).includes('received'));
+    }finally{failure.restore();}
+  });
+
+  await t.test('email status checking rejects mismatched provider recipients and pre-send read failures do not stay locked', async () => {
+    const f=fixture({record:{status:'paid'},emailRetrieval:{to:['other@example.invalid']}});
+    try {
+      const cookie=await login(),request_id=crypto.randomUUID();
+      await handleApi(context(req('/send-receipt-email',{payment_link_id:id,request_id},cookie)));
+      assert.equal((await handleApi(context(req('/check-email-status',{payment_link_id:id,email_request_id:request_id},cookie)))).status,503);
+      assert.equal(f.events.size,0);assert.equal(f.counts.email,1);
+    }finally{f.restore();}
+    const bad=fixture({record:{status:'paid',customer_name:'invalid\nname'}});
+    try {
+      const cookie=await login();const response=await handleApi(context(req('/send-receipt-email',{payment_link_id:id,request_id:crypto.randomUUID()},cookie)));
+      assert.equal((await response.json()).email_status,'failed');assert.equal(bad.counts.email,0);
+    }finally{bad.restore();}
+  });
+
+  await t.test('staff payment inquiry resolves expired review only on exact capture, with no new charge', async () => {
+    for(const [captured,reference] of [[true,'123456789012'],[false,'123456789012'],[false,'123456789013']]) {
+      const f=fixture({record:{expires_at:'2000-01-01T00:00:00Z'},attempt:{id:crypto.randomUUID(),order_id:'pffffffffffffffffff',amount:'10.00',state:'review',created_at:'2000-01-01T00:00:00Z',retref:'123456789012'},inquiry:{respstat:'A',retref:reference,amount:captured||reference==='123456789013'?'10.00':'9.00',setlstat:'Queued for Capture'}});
+      try {
+        const cookie=await login(),response=await handleApi(context(req('/check-payment',{payment_link_id:id},cookie))),data=await response.json();
+        assert.equal(response.status,200);assert.equal(data.code,captured?'paid':'merchant_review');assert.equal(f.counts.auth+f.counts.capture,0);assert.equal(f.counts.inquiry,1);
+        assert.equal(f.attempt().state,captured?'paid':'review');
+      }finally{f.restore();}
+    }
+    const f=fixture({attempt:{id:crypto.randomUUID(),order_id:'pffffffffffffffffff',amount:'10.00',state:'processing',created_at:new Date().toISOString()}});
+    try{const cookie=await login();const result=await (await handleApi(context(req('/check-payment',{payment_link_id:id},cookie)))).json();assert.equal(result.code,'still_processing');assert.equal(f.counts.inquiry,0);}finally{f.restore();}
+  });
+
+  await t.test('invoice operations and all-page CSV require staff and reject unsafe requests', async () => {
+    const f=fixture();
+    try {
+      for(const path of ['/send-receipt-email','/check-payment','/check-email-status','/cancel-link','/replace-link']) assert.equal((await handleApi(context(req(path,{payment_link_id:id,request_id:crypto.randomUUID()})))).status,401);
+      assert.equal((await handleApi(context(req('/staff-export')))).status,401);
+      const cookie=await login();
+      assert.equal((await handleApi(context(req('/cancel-link',{payment_link_id:id,amount:'1.00'},cookie)))).status,400);
+      assert.equal((await handleApi(context(req('/replace-link',{payment_link_id:id,request_id:'invalid'},cookie)))).status,400);
+      const foreign=new Request('https://portal.invalid/cancel-link',{method:'POST',headers:{Origin:'https://foreign.invalid',Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify({payment_link_id:id})});
+      assert.equal((await handleApi(context(foreign))).status,403);
+      for(let i=0;i<2;i++) assert.equal((await handleApi(context(req('/cancel-link',{payment_link_id:id},cookie)))).status,200);
+      const replaced=await (await handleApi(context(req('/replace-link',{payment_link_id:id,request_id:crypto.randomUUID()},cookie)))).json();assert(UUID.test(replaced.id));
+      const exportResponse=await handleApi(context(req('/staff-export?search=CSV-&payment=unpaid&email=delivered&start=2026-10-01&end=2026-10-13&customer=email%3Acsv%40example.invalid',undefined,cookie)));
+      assert.equal(exportResponse.status,200);assert.equal(exportResponse.headers.get('Content-Type'),'text/csv; charset=utf-8');assert.equal(exportResponse.headers.get('Cache-Control'),'no-store');
+      const bytes=new Uint8Array(await exportResponse.arrayBuffer());assert.deepEqual([...bytes.slice(0,3)],[239,187,191]);
+      const csv=new TextDecoder().decode(bytes);assert.equal(csv.split('\r\n').length,62);assert(csv.includes("\"'=HYPERLINK"));assert(!csv.includes('/pay/'));
+      const rpc=f.requests.find(r=>r.path.endsWith('/portal_staff_export')).body;assert.equal(rpc.p_search,'CSV-');assert.equal(rpc.p_email,'delivered');assert.equal(rpc.p_start,'2026-10-01');assert.equal(rpc.p_customer,'email:csv@example.invalid');
+      const protectedCsv=invoiceCsv([{...dashboard().links[0],order_number:' +SUM(1,2)',customer_name:'  \u0000=FORMULA()',customer_email:'quote"comma,name@example.invalid'}]);
+      assert(protectedCsv.includes("\"' +SUM(1,2)\""));assert(protectedCsv.includes("\"'  \u0000=FORMULA()\""));assert(protectedCsv.includes('quote""comma,name'));
+    }finally{f.restore();}
+    const big=fixture({exportTooLarge:true});try{const cookie=await login();assert.equal((await handleApi(context(req('/staff-export',undefined,cookie)))).status,413);}finally{big.restore();}
+  });
+
   await t.test('batch gates cover scanning, duplicates, mixed recipients and manual review', () => {
-    const row = { status: 'success', reviewed: false, orderNumber: '123', amount: '10.00', customerName: 'Buyer', companyName: '', customerEmail: 'buyer@example.invalid' };
+    const row = { status: 'success', attachment: { filename: 'synthetic.pdf' }, orderNumber: '123', amount: '10.00', customerName: 'Buyer', companyName: '', customerEmail: 'buyer@example.invalid' };
     assert.equal(batchIssue([row]), '');
     assert(batchIssue([{ ...row, status: 'scanning' }]));
     assert(batchIssue([row, { ...row }]));
     assert(batchIssue([row, { ...row, orderNumber: '456', customerEmail: 'other@example.invalid' }]));
-    assert(batchIssue([{ ...row, status: 'review', reviewed: false }]));
-    assert.equal(batchIssue([{ ...row, status: 'review', reviewed: true }]), '');
+    assert(batchIssue([{ ...row, status: 'review', attachment: null }]));
+    assert.equal(batchIssue([{ ...row, status: 'review' }]), '');
   });
 
   await t.test('malformed bodies and missing setup never leak exceptions', async () => {

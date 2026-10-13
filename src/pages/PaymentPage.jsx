@@ -201,9 +201,7 @@ export default function PaymentPage() {
       <header className="payment-page-header">
         <img src="/logo.png" alt="Overnight Printing Seattle" className="payment-brand-logo" />
         <div className="payment-header-copy">
-          <p className="payment-eyebrow">Customer payment portal</p>
           <h1>Complete payment</h1>
-          <p className="subtitle">Review your printing invoice and securely pay by card.</p>
         </div>
         <div className="payment-header-badge">
           <Icon name="lock" size={17} />
@@ -214,9 +212,7 @@ export default function PaymentPage() {
       <div className="payment-workspace">
         <section className="payment-context-panel" aria-labelledby="invoice-summary-title">
           <div className="payment-section-heading">
-            <p className="section-kicker">Step 1 · Review</p>
             <h2 id="invoice-summary-title">Invoice summary</h2>
-            <p>Confirm these details before entering your card information.</p>
           </div>
 
           <div className="receipt" aria-label="Invoice summary">
@@ -239,30 +235,19 @@ export default function PaymentPage() {
           <div className="amount-due" aria-label="Total due">
             <div>
               <span className="amount-label">Total due</span>
-              <span className="amount-caption">Ready to pay</span>
             </div>
             <strong className="amount-value">${formatAmount(paymentLink.amount)} <small>USD</small></strong>
           </div>
 
-          <div className="trust-panel">
-            <Icon name="shield" size={22} />
-            <div>
-              <strong>Secure card processing</strong>
-              <span>Card numbers are entered in CardPointe’s hosted secure field.</span>
-            </div>
-          </div>
-
           <div className="accepted-cards" aria-label="Accepted cards">
             <Icon name="card" />
-            <span>Visa, Mastercard, American Express, and Discover accepted</span>
+            <span>Visa · Mastercard · American Express · Discover</span>
           </div>
         </section>
 
         <section className="payment-entry-panel" aria-labelledby="payment-details-title">
           <div className="payment-section-heading">
-            <p className="section-kicker">Step 2 · Pay securely</p>
             <h2 id="payment-details-title">Payment details</h2>
-            <p>Enter the billing information associated with your card.</p>
           </div>
           {pending ? <div className="alert alert-warning alert-stacked" role="status">
             <h2>Checking your payment</h2>

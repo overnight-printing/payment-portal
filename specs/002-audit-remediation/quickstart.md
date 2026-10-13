@@ -4,6 +4,8 @@ Production repair completed after owner authorization on 2026-10-12: applied `20
 
 Staff sign-in troubleshooting: `configuration_unavailable` now identifies invalid setting names without values. Set `APP_ENV` to lowercase `production`, supply a separate `SESSION_SECRET` of at least 32 characters and `STAFF_PASSCODE` of at least 10 characters in Pages Production, then redeploy. `staff_rate_limit_unavailable` means the Supabase connection or `portal_rate_limit` migration needs inspection; authentication remains closed. An unauthenticated `GET /staff-session` should return 401 after session configuration is valid.
 
+Staff simplification validation: drop a synthetic invoice on the header, a billing field and a page margin; all should use the same parser without navigating away. Text dragging must remain normal. Submit valid billing details without a final confirmation checkbox. File drops must be ignored during creation or unresolved recovery, and listeners removed after leaving the staff page. Chrome assertions passed these cases, preserved manual edits and checked 320/393/768/1024/1440 layouts; see `.preview/staff-simple-393.png` and `.preview/staff-simple-1024.png`. These UI changes remain local for owner review.
+
 1. `npm install`; `npm test`; `npm run lint`; `npm run build`.
 2. Run isolated PostgreSQL migration/concurrency checks with the documented test script; never point it at a remote/existing database.
 3. `npm run demo` starts synthetic localhost preview with staff, pending, paid, expired and processing scenarios. It cannot contact payment/email/database services. Review customer and staff flows at 375/768/1024/1440 widths, keyboard and reduced motion.
@@ -14,3 +16,5 @@ Release-only prerequisites: approved migration/schema inspection, individual sta
 
 ## Completed local validation — 2026-10-12
 Node checks (16), isolated PostgreSQL migration/race/grants, lint, build, zero-advisory dependency audit and Pages compilation passed. Chrome verified workflow/real bundled PDF extraction and mobile bounds; WebKit verified 320/375/393/430 bounds plus 200% text. Review screenshots and audit mapping are linked in `reports/payment-portal-remediation-2026-10-12.md`. The local synthetic preview is running on 127.0.0.1:5176. No visible browser connector was available to auto-open it; open the local URL directly. Real UAT, production identity/database settings, mail delivery and physical mobile-device behavior remain release checks.
+
+Final local UI pass: staff form centered; per-file review checkboxes removed while unreadable attachments and partial totals stay guarded. Checkout step labels and repetitive instructions removed. Chrome assertions passed staff and checkout mobile/desktop flows; 17 Node checks, lint and build passed. See `.preview/checkout-clean-393.png` and `.preview/checkout-clean-1440.png`. No push or deployment.

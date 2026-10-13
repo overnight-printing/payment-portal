@@ -49,8 +49,10 @@ Concurrent tabs; lost responses; gateway approval with failed database update; g
 - FR-003: Staff authorization fails closed, sessions expire, reusable credentials are not persisted in the browser, and login attempts are bounded across backend instances.
 - Staff sign-in configuration errors MUST identify invalid setting names without revealing their values; database rate-limit failures MUST be distinguished from incorrect passcodes.
 - FR-004: All touched APIs use explicit contracts, bounded requests, allowlisted output, sanitized errors and appropriate response headers.
-- FR-005: Validate invoice extraction at the trust boundary and require staff review for missing/conflicting billing values.
-- FR-006: Prevent duplicate/mixed batches, preserve manual corrections, bound file resources and submit only a finalized batch.
+- FR-005: Validate invoice extraction at the trust boundary and require missing/conflicting billing values to be corrected in the form.
+- FR-006: Prevent duplicate/mixed batches, preserve manual corrections and bound file resources. Staff can submit valid billing details directly without confirmation checkboxes. An incomplete invoice must not produce a partial automatic invoice-number list or total; staff enter those values explicitly. Unreadable attachments remain blocked until removed.
+- Staff UI uses one unnumbered form with concise labels and a large, full-width upload area. Invoice files can be dropped anywhere in the authenticated staff page, including margins and form fields; text dragging remains unaffected and file drops cannot navigate the browser away.
+- Center the staff page. Checkout has concise invoice/payment headings without numbered steps or repeated instructions; labels, accessible errors and loading/recovery messages remain.
 - FR-007: Link creation is recoverable across retries; email failure cannot conceal an already-created link or trigger a new billing record.
 - FR-008: Complete truthful receipts, route/data recovery, focus/status semantics, contrast and shorter mobile flows.
 - FR-009: Consolidate duplicated backends without removing deployed entrypoints; fix lint/dependency/configuration drift.

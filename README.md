@@ -17,13 +17,74 @@ npm run demo
 Open http://127.0.0.1:5176. This localhost-only preview uses synthetic invoices,
 card selection, sessions and delivery outcomes. It does not connect to CardPointe,
 Supabase, Workers AI or Resend. Use the preview navigation for checkout, paid,
-processing, expired and staff/email-failure states. If staff sign-in is shown,
+processing, expired, dashboard and staff/email-failure states. If staff sign-in is shown,
 the demo passcode is `preview`.
 
 The real payment flow requires a separate **Name on card**, which can differ
 from the invoice customer. It is validated and sent to CardPointe as `name`;
 the portal does not claim issuer name-match verification. Expiration and security
 code stack on screens at most 430px wide; all inputs have bounded widths.
+
+## Staff workspace (local review)
+
+Staff land on Overview at `/` or `/dashboard`. The same session and persistent
+navigation cover `/invoices`, `/send` and `/customers`. The staff workspace fills
+the browser window edge-to-edge; invoice/customer tables use compact rows and
+retain keyboard controls and 44px action targets. Invoice upload/creation
+stays inside the workspace; draft fields survive internal navigation. Creation
+and unresolved recovery lock navigation to prevent duplicate operations.
+
+Overview shows paid/unpaid link amounts, latest customer email accepted/delivered count, attention
+items and recent/unpaid quick views. Invoices support literal search, payment and
+email filters, Seattle created-date ranges, paging, copy and a details side panel.
+Customers group by normalized email and open exact scoped invoice histories.
+History counts stored links rather than deduplicated accounting receivables.
+Cancelled/replaced links remain in history but are excluded from unpaid counts
+and outstanding amounts; expired active links remain unpaid. Historical records are never merged by guess.
+
+The details panel shows payment/link/receipt statuses, expiry, recorded email
+attempts and specific attention reasons. Staff can send/resend an eligible unpaid
+link, send/resend a customer receipt for a paid invoice, check a known email's
+provider status, or perform inquiry-only payment checking for uncertain outcomes.
+Receipts never trigger another charge or re-send staff alerts. Durable claims
+protect both initial receipts and deliberate resends beyond provider retention.
+Unconfirmed sends stay locked until verified evidence resolves them; missing
+provider IDs require provider review. Later link sends cannot reconstruct original
+invoice attachments. Accepted and Delivered are distinct; Delivered means the
+recipient's mail server accepted the message, not that the customer read it.
+Older unrecorded history stays Unknown.
+
+Unpaid links can be cancelled with confirmation when no payment attempt is active.
+Expired unpaid links can be replaced atomically with one new 30-day link; history
+is retained and replacement does not automatically email anyone. Paid/processing/
+review links cannot be cancelled or replaced. No manual mark-paid, uncertainty
+unlock, refund or bank-payout action exists.
+
+Export CSV downloads all matching invoice-filter results across pages from one
+snapshot, up to 10,000 links. Larger matches require narrower filters. Text that
+could become a spreadsheet formula is prefixed with an apostrophe; exported
+amounts remain plain exact decimals. No card credentials or payment URLs appear.
+
+Before pushing, apply and verify prepared migrations in order: dashboard 002,
+workspace 003, then `202610130004_staff_operations.sql`. The first integrity
+migration is already applied to production. Migrations preserve original fields
+and add service-only history/actions. Main pushes auto-deploy Cloudflare Pages.
+Owner authorized production release on 2026-10-13. Migrations 002–004 are now
+applied and verified against unchanged original invoice fields. Resend message
+read access, the webhook and matching Production secrets are configured. See [the validation guide](specs/003-staff-dashboard/quickstart.md).
+
+For live delivery tracking after an approved deployment, register
+`https://pay.overnightprintingseattle.com/resend-webhook` in Resend and subscribe
+to `email.sent`, `email.delivered`, `email.delivery_delayed`, `email.bounced`,
+`email.failed`, `email.complained` and `email.suppressed`. Set its signing secret
+as `RESEND_WEBHOOK_SECRET` in the matching Pages Production environment (and
+Worker environment if used), then redeploy to activate that binding. Never put
+this secret in source or frontend variables. The existing RESEND_API_KEY must
+allow retrieving sent emails for Check email status. Webhooks verify bounded
+raw body signatures/time and dedupe durable per-recipient events. Test provider
+events on nonproduction before production release; no real messages were sent
+by local verification. See [Resend webhook setup](https://resend.com/docs/webhooks/introduction)
+and [signature verification](https://resend.com/docs/webhooks/verify-webhooks-requests).
 
 ## Development with real nonproduction services
 
@@ -54,13 +115,23 @@ uses the bundled PDF.js/worker, disables eval and supports up to 20 pages.
 - Staff access fails closed, uses an expiring HttpOnly session, and rate-limits
   login through durable salted-IP buckets. No reusable passcode is retained in
   localStorage. Individual staff SSO remains a deployment identity prerequisite.
-- Staff must review the final billing details. Scanning, duplicate invoice numbers,
+- Staff use one form and can drop invoices anywhere on the page. Valid details
+  can be submitted directly. Scanning, duplicate invoice numbers,
   duplicate file content and mixed recipients block accidental consolidation;
   explicit edits are preserved and removing all files resets billing details.
 - Uploads are limited to 5 files, 5 MB each and 10 MB total. Readable attachments
   can be reviewed manually when extraction fails or a PDF is scanned.
 - Stable request IDs recover link creation after lost responses. Email acceptance
   and failure are separate from link creation; user copy does not promise delivery.
+- Customer receipts and internal paid alerts use distinct branded layouts with
+  the existing logo, navy/blue colors and Arial. Customer receipts emphasize the
+  paid amount and concise payment date; staff get the same navy payment header,
+  a compact labelled summary and `[Paid]` subject with customer/company, invoice
+  and amount. Both use a pale-blue circled check and grouped amounts ($2,596.96),
+  without USD labels. Staff payment-time wording is removed.
+  Both include copyable plain text; recipients and notification identities stay
+  the same. Local samples are in `.preview/customer-payment-confirmation.html`
+  and `.preview/staff-payment-confirmation.html`; no real emails were sent.
 - Errors, API output and emails are sanitized/allowlisted. Card credentials and
   raw model/provider responses are never logged or persisted by this code.
 

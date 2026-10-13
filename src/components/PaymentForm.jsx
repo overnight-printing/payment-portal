@@ -262,14 +262,13 @@ export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess, o
       )}
 
       <div className="form-group">
-        <label htmlFor="cardholderName">Name on card <span className="required-text">Required</span></label>
-        <input ref={(node) => { fieldRefs.current.cardholderName = node; }} id="cardholderName" type="text" required value={cardholderName} maxLength={30} autoComplete="cc-name" autoCapitalize="words" disabled={isProcessing} onChange={(event) => { const value = event.target.value; setCardholderName(value); if (touched.cardholderName) setErrors((current) => ({ ...current, cardholderName: validateField('cardholderName', value) })); }} onBlur={() => handleBlur('cardholderName', cardholderName)} aria-invalid={Boolean(errors.cardholderName)} aria-describedby="cardholder-help cardholder-error" />
-        <p className="field-help" id="cardholder-help">As shown on the card. This may differ from the invoice customer.</p>
+        <label htmlFor="cardholderName">Name on card</label>
+        <input ref={(node) => { fieldRefs.current.cardholderName = node; }} id="cardholderName" type="text" required value={cardholderName} maxLength={30} autoComplete="cc-name" autoCapitalize="words" disabled={isProcessing} onChange={(event) => { const value = event.target.value; setCardholderName(value); if (touched.cardholderName) setErrors((current) => ({ ...current, cardholderName: validateField('cardholderName', value) })); }} onBlur={() => handleBlur('cardholderName', cardholderName)} aria-invalid={Boolean(errors.cardholderName)} aria-describedby="cardholder-error" />
         <p className="field-error" id="cardholder-error" aria-live="polite">{errors.cardholderName || ''}</p>
       </div>
 
-      <div className="form-group" role="group" aria-labelledby="card-number-label" aria-describedby="card-number-help">
-        <span className="form-label" id="card-number-label">Card number <span className="required-text">Required</span></span>
+      <div className="form-group" role="group" aria-labelledby="card-number-label" aria-describedby={!isIframeReady ? 'card-number-help' : undefined}>
+        <span className="form-label" id="card-number-label">Card number<span className="sr-only">, required</span></span>
         <div className={`iframe-container${isIframeReady ? '' : ' is-loading'}`} inert={isProcessing ? true : undefined}>
           <iframe
             key={frameVersion}
@@ -282,9 +281,7 @@ export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess, o
             onLoad={() => { trustedFrameRef.current = iframeRef.current?.contentWindow; tokenRef.current = null; setIsIframeReady(true); setFrameFailed(false); }}
           />
         </div>
-        <p className="field-help" id="card-number-help">
-          {frameFailed ? 'The secure field did not load. Check your connection and reload it.' : isIframeReady ? 'Enter the card number, then move to expiration to verify it securely.' : 'Loading the secure card field…'}
-        </p>
+        {!isIframeReady && <p className="field-help" id="card-number-help">{frameFailed ? 'The card field did not load. Reload it to continue.' : 'Loading card field…'}</p>}
       </div>
 
       {frameFailed && <button type="button" className="btn btn-secondary" onClick={reloadFrame}>Reload secure card field</button>}
@@ -292,10 +289,11 @@ export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess, o
 
       <div className="payment-field-grid">
         <div className="form-group">
-          <label htmlFor="expiry">Expiration date <span className="required-text">Required</span></label>
+          <label htmlFor="expiry">Expiration date</label>
           <input
             ref={(node) => { fieldRefs.current.expiry = node; }}
             id="expiry"
+            required
             type="text"
             value={expiry}
             onChange={handleExpiryChange}
@@ -306,17 +304,17 @@ export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess, o
             autoComplete="cc-exp"
             placeholder="MM/YY"
             aria-invalid={Boolean(errors.expiry)}
-            aria-describedby="expiry-help expiry-error"
+            aria-describedby="expiry-error"
           />
-          <p className="field-help" id="expiry-help">Use the month and two-digit year.</p>
           <p className="field-error" id="expiry-error" aria-live="polite">{errors.expiry || ''}</p>
         </div>
 
         <div className="form-group">
-          <label htmlFor="cvv">Security code <span className="required-text">Required</span></label>
+          <label htmlFor="cvv">Security code (CVV)</label>
           <input
             ref={(node) => { fieldRefs.current.cvv = node; }}
             id="cvv"
+            required
             type="password"
             value={cvv}
             onChange={(event) => updateNumericField('cvv', event.target.value, 4, setCvv)}
@@ -328,16 +326,17 @@ export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess, o
             aria-invalid={Boolean(errors.cvv)}
             aria-describedby="cvv-help cvv-error"
           />
-          <p className="field-help" id="cvv-help">3 digits on most cards; 4 on American Express.</p>
+          <p className="field-help" id="cvv-help">3 or 4 digits</p>
           <p className="field-error" id="cvv-error" aria-live="polite">{errors.cvv || ''}</p>
         </div>
       </div>
 
       <div className="form-group">
-        <label htmlFor="zip">Billing ZIP code <span className="required-text">Required</span></label>
+        <label htmlFor="zip">Billing ZIP code</label>
         <input
           ref={(node) => { fieldRefs.current.zip = node; }}
           id="zip"
+          required
           type="text"
           value={zip}
           onChange={(event) => updateNumericField('zip', event.target.value, 5, setZip)}
@@ -347,9 +346,8 @@ export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess, o
           inputMode="numeric"
           autoComplete="postal-code"
           aria-invalid={Boolean(errors.zip)}
-          aria-describedby="zip-help zip-error"
+          aria-describedby="zip-error"
         />
-        <p className="field-help" id="zip-help">Enter the ZIP code associated with the card.</p>
         <p className="field-error" id="zip-error" aria-live="polite">{errors.zip || ''}</p>
       </div>
 

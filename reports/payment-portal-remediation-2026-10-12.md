@@ -26,7 +26,7 @@ Payment claims and finalization now live in service-only transactional PostgreSQ
 
 Pages Functions and the standalone Worker share one backend, eliminating their divergent security/payment/parser logic. Sessions fail closed, expire after an hour, use HttpOnly/SameSite cookies and durable hashed-IP login rate limits. No reusable staff passcode remains in localStorage.
 
-Staff workflow rejects duplicate/mixed/incomplete batches, preserves manual corrections, resets billing after removing all files, and requires an explicit final review. Readable files can be attached after manual review when parsing fails. Requests/files/pages/image area/attachments have limits; PDF.js and its matching worker are bundled and patched. Stable creation request IDs make lost-response retries recover the existing link. Failed customer email is shown separately from successful link creation.
+Staff workflow rejects duplicate/mixed/incomplete batches, preserves manual corrections and resets billing after removing all files. At the owner's request, the final confirmation checkbox and numbered panels were removed; valid billing details can be submitted directly and invoices can be dropped anywhere on the staff page. Readable files can be attached after manual review when parsing fails. Requests/files/pages/image area/attachments have limits; PDF.js and its matching worker are bundled and patched. Stable creation request IDs make lost-response retries recover the existing link. Failed customer email is shown separately from successful link creation.
 
 Customer UI validates complete lookup data, resets on invoice navigation, replaces blank routes with support guidance, handles pending payments without a new Pay action, announces completion and focuses the receipt. Paid date, safe card last four and print/save support are available. Receipt copy reports acceptance accurately and does not promise a message that was never sent. Contrast, mobile density, input bounds and static/API security headers were improved.
 
@@ -56,7 +56,7 @@ Customer UI validates complete lookup data, resets on invoice navigation, replac
 | 18 | Unbounded operations/resources | Fixed locally: request/body/upstream/file deadlines and file/page/area/attachment limits; real AI service runtime not exercised |
 | 19 | HTTP failures authenticate staff UI | Fixed locally: explicit successful session response required; HTTP-500 browser test passed |
 | 20 | Missing promised customer receipt | Fixed locally: customer receipt acceptance on completed/reconciled payment, truthful fallback; live delivery/bounce/queue operations remain external |
-| 21 | Hidden email failure | Fixed locally: distinct accepted/failed/not-requested result and preserved invoice/recipient summary; full resend/history UI remains a separate feature |
+| 21 | Hidden email failure | Fixed locally: distinct accepted/failed/not-requested result and preserved invoice/recipient summary; integrated history/send/resend workspace now prepared locally |
 | 22 | Stale paid route state | Fixed locally: invoice-keyed page + stale lookup cancellation |
 | 23 | Null/malformed lookup crash | Fixed locally: full shape/status/amount/ID validation before render |
 | 24 | Tokenizer protocol/retry | Fixed locally: documented blur protocol, exact origin/source, stale token invalidation, frame replacement and bounded loading; real UAT integration still required |
@@ -92,4 +92,37 @@ Customer UI validates complete lookup data, resets on invoice navigation, replac
 5. Verify actual email delivery, bounce handling and durable operational retries. Acceptance from the email API is not proof of delivery; notification idempotency/retention is provider-dependent.
 6. Review the tracked invoice PDF for private data; it was not opened, used as a fixture or removed. Backups, existing grants, identity/edge rules and production logs remain unverified.
 
-Optional wallets, international addresses, automatic scanned-PDF OCR, reminders, accounting sync, a full administration dashboard and broad product feature expansion were not added. The repair retains the existing merchant/provider and dependency-light UI.
+Optional wallets, international addresses, automatic scanned-PDF OCR, reminders, accounting sync, refund/administration tools and broad product feature expansion were not added. The repair retains the existing merchant/provider and dependency-light UI.
+
+## Staff dashboard — local review, 2026-10-12
+
+A protected `/dashboard` now tracks all links, customer/invoice/amount/date, paid/unpaid totals, payment state and email state. It supports literal search, filters, bounded paging, refresh, open/copy and clipboard fallback. Reuses staff sessions and native responsive UI; listing never calls payment/email providers. New additive migration preserves original business fields, records future email outcomes and adds a service-only snapshot RPC. Historical unconfirmed email history remains Unknown; network-ambiguous sends remain Unconfirmed. A failed concurrent send cannot overwrite recorded acceptance.
+
+Local verification: 25 Node checks passed; isolated PostgreSQL applies both migrations twice and verifies legacy-field checksum, exact totals, search/paging/attempt states/nullable data/permissions and monotonic email writes. Chrome and WebKit dashboard checks passed at 320/393/768/1440, including filters, clipboard fallback, sanitized retry, session expiry/logout and no invoice-drop listeners in dashboard. Existing simplified staff and checkout checks remain required regression gates. Screenshots: `.preview/dashboard-393.png`, `.preview/dashboard-1440.png` (synthetic only).
+
+No dashboard/workspace migrations applied to production; no push or deployment. Migration must be applied and verified before main push/Pages release. No real payments or emails sent during validation. Staff UI cleanup is also local for review. Feature details: `specs/003-staff-dashboard/`.
+
+## Integrated staff workspace — local review
+
+User-approved reference layout: persistent sidebar, Overview landing page, Invoices & payments, Send payment link inside the same shell, Customers with scoped history, global search and invoice details side panel. Desktop rows separate invoice/customer; mobile cards preserve table semantics and labels. Original simplified upload/CVV/name behavior remains intact.
+
+Initial and explicit later emails share durable claim/finish RPCs. Same request replay does not call the provider; concurrent sends yield one claim; ambiguous sends remain locked. Sending/resending never creates another link, alters amounts or resets expiry. Latest failed resend remains visible even if an earlier email was accepted. Recorded history is truthful; historical missing history is unknown; original files are unavailable for later attachment resend.
+
+All 25 Node checks, isolated three-migration SQL checks, lint/build, Pages compilation, Chrome/WebKit workspace flows and staff/checkout regressions passed. Migrations 002 and 003 are prepared only and must precede approved main push. No production edits, real email or payment performed. Local review: http://127.0.0.1:5176/dashboard.
+
+## Staff payment confirmation readability — 2026-10-13, local review
+
+Restored a dedicated internal confirmation instead of reusing the customer greeting template. Subject contains [Paid], invoice(s) and exact amount; fixed labelled HTML table/plain text includes customer/company, email, payment method with known masked last four, reference and Seattle time. Dynamic HTML is escaped and missing details are not invented. Customer templates, recipients and receipt idempotency remain unchanged. All 26 Node checks, lint/build, Pages compilation and Chrome/WebKit mail layout checks passed. Synthetic HTML/text/mobile/desktop previews are in `.preview/staff-payment-confirmation*`. No real email sent, production edits, push or deployment; real email-client rendering remains unverified.
+
+### Branded customer and staff confirmations (2026-10-13, local review)
+Distinct real-logo/navy/blue/Arial email layouts now render from the shared receipt path. Customer gets a professional successful-payment receipt; staff gets a compact labelled operational summary and restored [Paid] invoice/amount subject. Removed staff Paid At (Seattle) row. Request mail, financial behavior, recipients and provider identities unchanged. Escaped HTML and copyable plain text use recorded data only. All 26 Node checks, lint/build, Pages compilation and Chrome/WebKit 320/393/768px normal/long/missing-data layouts passed. Both exact synthetic HTML previews/screenshots are available locally; no real email, production write or deployment. Actual mail-client rendering/delivery not tested.
+
+Receipt refinements (local): removed USD/STAFF CONFIRMATION labels; matched both navy centered-amount headers; replaced glyph with reference-style pale-blue/blue PNG icon backed by SVG source. Staff inbox subject includes recorded customer/company, invoice and comma-grouped amount; HTML/text money display also grouped. 27 Node checks, lint/build/Pages and Chrome/WebKit desktop/mobile centered layout checks passed. Both previews refreshed with local image assets for review before deployment; actual mail-client rendering untested.
+
+
+## Operations and receipt recovery — 2026-10-13, local review
+Delivery tracking now stores provider identity, durable per-kind receipt/link claims and signed minimal per-recipient event facts. Acceptance, delivery, delay, bounce, failure, suppression and spam complaint are distinct. Early/replayed/out-of-order callbacks preserve facts without touching payment status. Paid customer receipts can be sent/resend from invoice details; explicit resend never creates a charge/link or staff alert. Known-ID status checks query the provider read-only; missing-ID uncertainty stays locked.
+
+Attention gives specific reasons with safe payment inquiry, receipt/mail recovery and expiry actions. Inquiry resolves only an exact confirmed capture, including expired/review invoices, never a new authorization/capture or manual unlock. Unpaid cancellation and expired replacement lock invoice rows against active attempts. Replacement keeps one successor/history, expires in 30 days and sends no automatic email; cancelled records are excluded from outstanding counts/cents. Export uses a bounded single filtered snapshot across pages, quotes/formula-protects text, and explicitly rejects >10,000 results.
+
+All 32 Node checks, isolated four-migration PostgreSQL concurrency/replay/permissions/totals checks, lint/build/Pages compilation and Chrome/WebKit operations passed; existing workspace/upload/checkout/compact regressions passed. Local screenshots/export are synthetic. New migration `202610130004_staff_operations.sql` and Resend webhook/signing-secret/retrieval-permission setup are required before approved rollout. No real sends/payments, production writes or deployment; live service integration and actual email clients remain untested.
