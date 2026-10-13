@@ -888,6 +888,8 @@ body:has(.staff-shell) { background: var(--color-surface-muted); }
 .dashboard-table th:last-child { width: 136px; }
 .invoice-table th:first-child { width: 15%; }
 .invoice-table th:nth-child(2) { width: 23%; }
+.invoice-table th:nth-child(4) { width: 170px; }
+.invoice-table th:nth-child(5) { width: 144px; }
 .invoice-table th:last-child { width: 128px; }
 .dashboard-table td { padding: 6px 12px; border-bottom: 1px solid var(--color-border); vertical-align: middle; overflow-wrap: anywhere; }
 .dashboard-table tbody tr:hover { background: var(--color-surface-muted); }
