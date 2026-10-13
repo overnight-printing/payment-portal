@@ -112,7 +112,7 @@ export default function PaymentPage() {
     return (
       <main className="card payment-card fade-in">
         <div className="brand-logo-container">
-          <img src="/logo.png" alt="Overnight Printing Seattle" className="brand-logo" />
+          <img width={761} height={240} src="/logo.png" alt="Overnight Printing Seattle" className="brand-logo" />
         </div>
         <div className="alert alert-error" role="alert">
           <Icon name="warning" size={24} />
@@ -153,7 +153,7 @@ export default function PaymentPage() {
     return (
       <main className="card payment-card fade-in">
         <div className="brand-logo-container">
-          <img src="/logo.png" alt="Overnight Printing Seattle" className="brand-logo" />
+          <img width={761} height={240} src="/logo.png" alt="Overnight Printing Seattle" className="brand-logo" />
         </div>
         <section className="success-state" aria-labelledby="payment-received-title">
           <p className="sr-only" role="status">Payment received. Your receipt is ready.</p>
@@ -199,7 +199,7 @@ export default function PaymentPage() {
   return (
     <main className="card payment-card payment-checkout-card fade-in">
       <header className="payment-page-header">
-        <img src="/logo.png" alt="Overnight Printing Seattle" className="payment-brand-logo" />
+        <img width={761} height={240} src="/logo.png" alt="Overnight Printing Seattle" className="payment-brand-logo" />
         <div className="payment-header-copy">
           <h1>Complete payment</h1>
         </div>

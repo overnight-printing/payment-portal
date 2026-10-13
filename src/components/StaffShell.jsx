@@ -17,7 +17,7 @@ export default function StaffShell({ view, locked, onLogout, children }) {
   const guard = (event) => { if (locked) event.preventDefault(); else setMenuOpen(false); };
   return <div className="staff-shell">
     <aside className="staff-sidebar">
-      <Link className="workspace-brand" to="/dashboard" onClick={guard} aria-label="Overnight Printing Seattle dashboard"><img src="/logo.png" alt="Overnight Printing Seattle" /></Link>
+      <Link className="workspace-brand" to="/dashboard" onClick={guard} aria-label="Overnight Printing Seattle dashboard"><img width={761} height={240} src="/logo.png" alt="Overnight Printing Seattle" /></Link>
       <div className="workspace-mobile-bar"><span>Payment portal</span><button type="button" className="workspace-menu-button" aria-label="Toggle staff navigation" aria-controls="workspace-navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}><Icon name={menuOpen ? 'x' : 'menu'} /></button></div>
       <nav id="workspace-navigation" aria-label="Staff navigation" className={`workspace-navigation ${menuOpen ? 'is-open' : ''}`}>
         {navigation.map((item) => <Link key={item.view} to={item.href} aria-current={view === item.view ? 'page' : undefined} aria-disabled={locked || undefined} onClick={guard}><Icon name={item.icon} /><span>{item.label}</span></Link>)}

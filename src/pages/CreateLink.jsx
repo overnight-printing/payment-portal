@@ -327,7 +327,7 @@ export default function CreateLink() {
       <main className="passcode-container fade-in">
         <div className="passcode-card">
           <div className="passcode-logo-container">
-            <img src="/logo.png" alt="Overnight Printing Seattle" className="passcode-logo" />
+            <img width={761} height={240} src="/logo.png" alt="Overnight Printing Seattle" className="passcode-logo" />
           </div>
           <h1 className="passcode-title">Staff portal</h1>
           
@@ -451,7 +451,7 @@ export default function CreateLink() {
         />
 
         <button ref={uploadButtonRef} type="button" className="invoice-upload-area" aria-label="Upload invoices" disabled={locked} onClick={() => fileInputRef.current?.click()}>
-          <Icon name="document" size={32} />
+          <span className="upload-symbol"><Icon name="upload" size={24} /></span>
           <span>Drop invoices here or click to upload</span>
         </button>
       </div>

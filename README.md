@@ -30,7 +30,11 @@ code stack on screens at most 430px wide; all inputs have bounded widths.
 Staff land on Overview at `/` or `/dashboard`. The same session and persistent
 navigation cover `/invoices`, `/send` and `/customers`. The staff workspace fills
 the browser window edge-to-edge; invoice/customer tables use compact rows and
-retain keyboard controls and 44px action targets. Invoice upload/creation
+retain keyboard controls and 44px action targets. Controls share 44px heights,
+8px corners and consistent text/icons across staff and customer screens.
+Narrow desktop tables scroll within a labelled, keyboard-accessible region;
+mobile cards retain every field/action. The approved navy/blue palette, Arial
+and original logo are retained. Invoice upload/creation
 stays inside the workspace; draft fields survive internal navigation. Creation
 and unresolved recovery lock navigation to prevent duplicate operations.
 

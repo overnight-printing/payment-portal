@@ -77,3 +77,8 @@ Order: T021 → T022/T023 → T024/T025 → T026 → T027. Implementation remain
 - [x] T034 [US11] Run focused browser date/pagination/mobile checks and npm test/lint/build; update README.md and specs/003-staff-dashboard/quickstart.md, then push/deploy authorized refinement.
 
 - [x] T035 [US11] Add bounded numbered pagination/helper assertions in src/lib/history.js and tests/history.test.js; center accessible controls in src/pages/Dashboard.jsx and src/index.css, verify mobile/jumps and publish checked refinement.
+
+## US12 UI/UX cleanup
+- [x] T036 [US12] Install/read upstream UI/UX Pro Max, inspect existing components/controls/assets and define retained rules in specs/003-staff-dashboard/.
+- [x] T037 [US12] Consolidate control sizing/tokens/layout in src/index.css and presentation-only wrappers/icons in src/components/StaffShell.jsx, src/components/Icon.jsx, src/pages/Dashboard.jsx and src/pages/CreateLink.jsx.
+- [x] T038 [US12] Verify responsive/accessibility geometry and existing functional flows with synthetic browser checks, run npm test/lint/build, update README.md/quickstart and publish the verified cleanup.
