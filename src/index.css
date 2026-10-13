@@ -909,8 +909,13 @@ body:has(.staff-shell) { background: #f1f4f8; }
 .dashboard-link-actions .text-button { min-height: 44px; font-size: .8125rem; }
 .dashboard-copy-fallback { margin-top: 8px; font-size: .75rem; }
 .dashboard-copy-fallback input { width: 100%; font-size: .8125rem; }
-.dashboard-pagination { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; padding: 18px 22px; font-size: .8125rem; border-top: 1px solid #e7ecf2; }
-.pagination-size, .pagination-controls { display: flex; align-items: center; gap: 10px; }
+.dashboard-pagination { display: grid; justify-items: center; gap: 12px; padding: 18px 22px; font-size: .8125rem; border-top: 1px solid #e7ecf2; }
+.pagination-size { display: flex; align-items: center; gap: 10px; }
+.pagination-controls { display: grid; grid-template-columns: auto minmax(0, auto) auto; align-items: center; justify-content: center; gap: 8px; max-width: 100%; }
+.pagination-pages { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px; min-width: 0; }
+.pagination-page { min-width: 44px; min-height: 44px; padding-inline: 10px; }
+.pagination-page[aria-current="page"], .pagination-page[aria-current="page"]:hover { background: var(--color-primary); border-color: var(--color-primary); color: white; }
+.pagination-ellipsis { padding-inline: 4px; color: #59677e; }
 .pagination-size { white-space: nowrap; }
 .pagination-size select { min-height: 44px; padding: 8px; border: 1px solid var(--color-border-strong); border-radius: 6px; background: white; color: #172033; }
 .dashboard-pagination .btn { font-size: .8125rem; }
@@ -1001,7 +1006,7 @@ body:has(.staff-shell) { background: #f1f4f8; }
   .dashboard-table tr { padding-inline: 14px; }
   .dashboard-pagination { padding: 16px 14px; gap: 6px; font-size: .75rem; }
   .dashboard-pagination .btn { padding-inline: 10px; font-size: .75rem; }
-  .pagination-controls { width: 100%; justify-content: space-between; gap: 6px; }
+  .pagination-controls { gap: 6px; }
   .invoice-detail-content { padding: 20px 18px; }
 }
 

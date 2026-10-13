@@ -38,7 +38,8 @@ Overview shows paid/unpaid link amounts, latest customer email accepted/delivere
 items and recent/unpaid quick views. Invoices support literal search, payment and
 email filters, Seattle created-date ranges, paging, copy and a details side panel.
 Invoice/customer lists default to the last 30 days with 25 rows per page.
-Choose 10, 25 or 50 rows, use Previous/Next, or select All time/Custom dates
+Choose 10, 25 or 50 rows, jump using centered numbered pages/Previous/Next,
+or select All time/Custom dates
 to view older records. CSV and customer drilldowns preserve the selected dates.
 Overview totals are all-time and open matching all-time history.
 Customers group by normalized email and open exact scoped invoice histories.

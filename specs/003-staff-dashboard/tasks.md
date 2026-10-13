@@ -75,3 +75,5 @@ Order: T021 → T022/T023 → T024/T025 → T026 → T027. Implementation remain
 - [x] T032 [US11] Add Seattle date helper and focused tests in src/lib/history.js and tests/history.test.js; reuse backend query validation.
 - [x] T033 [US11] Add date presets/custom dates, page sizes/counts/controls, URL state and drilldown preservation in src/pages/Dashboard.jsx and src/index.css.
 - [x] T034 [US11] Run focused browser date/pagination/mobile checks and npm test/lint/build; update README.md and specs/003-staff-dashboard/quickstart.md, then push/deploy authorized refinement.
+
+- [x] T035 [US11] Add bounded numbered pagination/helper assertions in src/lib/history.js and tests/history.test.js; center accessible controls in src/pages/Dashboard.jsx and src/index.css, verify mobile/jumps and publish checked refinement.

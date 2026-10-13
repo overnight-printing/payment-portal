@@ -1,7 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { historyRange } from '../src/lib/history.js';
+import { historyRange, paginationPages } from '../src/lib/history.js';
 import { dashboardQuery } from '../shared/validation.js';
+
+test('numbered pagination keeps small lists complete and large lists bounded with the current page and endpoints', () => {
+  assert.deepEqual(paginationPages(1, 1), [1]);
+  assert.deepEqual(paginationPages(3, 4), [1, 2, 3, 4]);
+  assert.deepEqual(paginationPages(1, 10), [1, 2, 3, 4, '…', 10]);
+  assert.deepEqual(paginationPages(5, 10), [1, '…', 4, 5, 6, '…', 10]);
+  assert.deepEqual(paginationPages(10, 10), [1, '…', 7, 8, 9, 10]);
+  for (const total of [7, 8, 40, 10001]) {
+    for (const current of [1, 2, Math.ceil(total / 2), total - 1, total]) {
+      const pages = paginationPages(current, total), numbers = pages.filter(Number.isInteger);
+      assert(pages.length <= 7); assert(numbers.includes(current));
+      assert.equal(numbers[0], 1); assert.equal(numbers.at(-1), total);
+      assert.deepEqual(numbers, [...new Set(numbers)].sort((a, b) => a - b));
+    }
+  }
+});
 
 test('recent history uses 30 inclusive Seattle calendar dates across midnight, DST and year boundaries', () => {
   for (const [now, start, end] of [

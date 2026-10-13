@@ -10,3 +10,10 @@ export function historyRange(params, now = new Date()) {
   start.setUTCDate(start.getUTCDate() - 29);
   return { mode: '30', start: start.toISOString().slice(0, 10), end };
 }
+
+export function paginationPages(current, total) {
+  if (total <= 7) return Array.from({ length: total }, (_, index) => index + 1);
+  const first = Math.max(2, Math.min(current - 1, total - 3));
+  const last = first + 2;
+  return [1, ...(first > 2 ? ['…'] : []), first, first + 1, last, ...(last < total - 1 ? ['…'] : []), total];
+}
