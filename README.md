@@ -28,7 +28,9 @@ code stack on screens at most 430px wide; all inputs have bounded widths.
 ## Staff workspace
 
 Staff land on Overview at `/` or `/dashboard`. The same session and persistent
-navigation cover `/invoices`, `/send` and `/customers`. The staff workspace fills
+navigation cover `/invoices`, `/send` and `/customers`. Staff sessions last
+24 hours from sign-in; sign out and back in to obtain the longer duration for
+an existing session. The staff workspace fills
 the browser window edge-to-edge; invoice/customer tables use compact rows and
 retain keyboard controls and 44px action targets. Controls share 44px heights,
 8px corners and consistent text/icons across staff and customer screens.

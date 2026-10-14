@@ -84,3 +84,7 @@ Order: T021 → T022/T023 → T024/T025 → T026 → T027. Implementation remain
 - [x] T038 [US12] Verify responsive/accessibility geometry and existing functional flows with synthetic browser checks, run npm test/lint/build, update README.md/quickstart and publish the verified cleanup.
 
 - [x] T039 [US12] Consolidate payment filters and list counts in src/pages/Dashboard.jsx/src/index.css; verify all statuses, pagination/accessibility/mobile and lint/build/tests, document results and release.
+
+## US13 One-day staff session
+- [x] T040 [US13] Add session-lifetime contract/plan and focused clock-boundary assertions in tests/portal.test.js.
+- [x] T041 [US13] Update shared session lifetime in server/api.js, document re-login requirement in README.md/quickstart, verify test/lint/build and Pages compilation, push and verify release.

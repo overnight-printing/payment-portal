@@ -302,6 +302,38 @@ test('payment trust boundaries and durable recovery', async (t) => {
     try { assert.equal((await handleApi(context(req('/staff-session', { passcode: env.STAFF_PASSCODE })))).status, 429); } finally { limited.restore(); }
   });
 
+  await t.test('staff session lasts exactly 24 hours with expiry, tampering, rotation and logout enforced', async (t) => {
+    const f = fixture();
+    const signedInAt = Date.parse('2026-10-14T12:00:00Z');
+    let now = signedInAt;
+    t.mock.method(Date, 'now', () => now);
+    try {
+      const response = await handleApi(context(req('/staff-session', { passcode: env.STAFF_PASSCODE })));
+      assert.equal(response.status, 200);
+      const header = response.headers.get('Set-Cookie');
+      assert.match(header, /; Path=\/; HttpOnly; SameSite=Strict; Max-Age=86400; Secure$/);
+      const cookie = header.split(';')[0];
+      const expiry = Number(cookie.split('=')[1].split('.')[0]);
+      assert.equal(expiry, signedInAt / 1000 + 86400);
+      for (const elapsed of [0, 3601, 86399]) {
+        now = signedInAt + elapsed * 1000;
+        assert.equal((await handleApi(context(req('/staff-session', undefined, cookie)))).status, 200);
+        assert.equal((await worker.fetch(req('/staff-session', undefined, cookie), env, { waitUntil() {} })).status, 200);
+      }
+      const tampered = cookie.replace(String(expiry), String(expiry - 1));
+      assert.equal((await handleApi(context(req('/staff-session', undefined, tampered)))).status, 401);
+      assert.equal((await handleApi(context(req('/staff-session', undefined, cookie), { STAFF_PASSCODE: 'rotated-synthetic-passcode' }))).status, 401);
+      const logout = await handleApi(context(new Request('https://portal.invalid/staff-session', { method: 'DELETE', headers: { Origin: env.PUBLIC_ORIGIN, Cookie: cookie } })));
+      assert.equal(logout.status, 200);
+      assert.match(logout.headers.get('Set-Cookie'), /^__Host-portal_session=;.*Max-Age=0; Secure$/);
+      for (const elapsed of [86400, 86401]) {
+        now = signedInAt + elapsed * 1000;
+        assert.equal((await handleApi(context(req('/staff-session', undefined, cookie)))).status, 401);
+        assert.equal((await worker.fetch(req('/staff-session', undefined, cookie), env, { waitUntil() {} })).status, 401);
+      }
+    } finally { f.restore(); }
+  });
+
   await t.test('staff setup failures identify names without values and rate-store failure stays closed', async () => {
     const missing = await handleApi(context(req('/staff-session'), { APP_ENV: 'Production', SESSION_SECRET: '', STAFF_PASSCODE: '' }));
     assert.equal(missing.status, 503);

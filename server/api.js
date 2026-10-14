@@ -6,7 +6,7 @@ import { invoiceCsv } from './csv.js';
 
 const encoder = new TextEncoder();
 const PUBLIC_FIELDS = 'id,order_number,amount,customer_name,customer_email,status,retref,paid_at,card_last4,expires_at,cancelled_at,receipt_sent,link_email_sent';
-const SESSION_SECONDS = 3600;
+const SESSION_SECONDS = 24 * 60 * 60;
 const COOKIE = '__Host-portal_session';
 
 export const securityHeaders = {
