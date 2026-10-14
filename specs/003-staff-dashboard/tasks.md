@@ -88,3 +88,7 @@ Order: T021 → T022/T023 → T024/T025 → T026 → T027. Implementation remain
 ## US13 One-day staff session
 - [x] T040 [US13] Add session-lifetime contract/plan and focused clock-boundary assertions in tests/portal.test.js.
 - [x] T041 [US13] Update shared session lifetime in server/api.js, document re-login requirement in README.md/quickstart, verify test/lint/build and Pages compilation, push and verify release.
+
+## US14 Cleanup and drawer dismissal
+- [x] T042 [US14] Inspect complete production history/active attempts, freeze cutoff, cancel eligible stale unpaid records through existing guarded RPC and verify retained records/paid data.
+- [x] T043 [US14] Add safe backdrop dismissal in src/pages/Dashboard.jsx, verify synthetic desktop/mobile/drag/busy/Escape/focus and test/lint/build, document and deploy.

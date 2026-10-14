@@ -43,6 +43,8 @@ and unresolved recovery lock navigation to prevent duplicate operations.
 Overview shows paid/unpaid link amounts, latest customer email accepted/delivered count, attention
 items and recent/unpaid quick views. Invoices support literal search, payment and
 email filters, Seattle created-date ranges, paging, copy and a details side panel.
+Close invoice details by clicking outside, using Escape, or the close button;
+dismissal is blocked while an action is pending.
 Invoice/customer lists default to the last 30 days with 25 rows per page.
 Payment status options appear once as filter buttons; paginated lists show one
 result-range count beneath the page controls.
