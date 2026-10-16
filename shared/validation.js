@@ -1,7 +1,7 @@
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const CARD_TOKEN = /^9\d{15}$/;
 export const MAX_FILE_BYTES = 5 * 1024 * 1024;
-export const MAX_FILES = 5;
+export const MAX_FILES = 20;
 export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
 export function moneyCents(value) {

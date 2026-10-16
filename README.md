@@ -136,7 +136,7 @@ uses the bundled PDF.js/worker, disables eval and supports up to 20 pages.
   can be submitted directly. Scanning, duplicate invoice numbers,
   duplicate file content and mixed recipients block accidental consolidation;
   explicit edits are preserved and removing all files resets billing details.
-- Uploads are limited to 5 files, 5 MB each and 10 MB total. Readable attachments
+- Uploads are limited to 20 files, 5 MB each and 10 MB total. Readable attachments
   can be reviewed manually when extraction fails or a PDF is scanned.
 - Stable request IDs recover link creation after lost responses. Email acceptance
   and failure are separate from link creation; user copy does not promise delivery.

@@ -227,7 +227,7 @@ export default function CreateLink() {
   const processInvoiceFile = async (file) => {
     if (!file || !sessionReady || submissionRef.current || creationUncertain) return;
     if (!ACCEPTED_TYPES.includes(file.type) && !ACCEPTED_EXTENSIONS.some((ext) => file.name.toLowerCase().endsWith(ext))) { setError('Choose a PDF, PNG, JPEG or WebP invoice.'); return; }
-    if (!file.size || file.size > MAX_FILE_BYTES || filesRef.current.size >= MAX_FILES || [...filesRef.current.values()].reduce((sum, item) => sum + item.file.size, file.size) > MAX_ATTACHMENT_BYTES) { setError('Use up to 5 invoices, at most 5 MB each and 10 MB total.'); return; }
+    if (!file.size || file.size > MAX_FILE_BYTES || filesRef.current.size >= MAX_FILES || [...filesRef.current.values()].reduce((sum, item) => sum + item.file.size, file.size) > MAX_ATTACHMENT_BYTES) { setError(`Use up to ${MAX_FILES} invoices, at most 5 MB each and 10 MB total.`); return; }
     if ([...filesRef.current.values()].some((item) => item.file.name === file.name && item.file.size === file.size && item.file.lastModified === file.lastModified)) { setError('This file is already in the batch. Remove it before adding a replacement.'); return; }
     const id = crypto.randomUUID();
     const epoch = workflowRef.current;

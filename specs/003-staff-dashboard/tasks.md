@@ -92,3 +92,7 @@ Order: T021 → T022/T023 → T024/T025 → T026 → T027. Implementation remain
 ## US14 Cleanup and drawer dismissal
 - [x] T042 [US14] Inspect complete production history/active attempts, freeze cutoff, cancel eligible stale unpaid records through existing guarded RPC and verify retained records/paid data.
 - [x] T043 [US14] Add safe backdrop dismissal in src/pages/Dashboard.jsx, verify synthetic desktop/mobile/drag/busy/Escape/focus and test/lint/build, document and deploy.
+
+## US15 Twenty-invoice batch
+- [x] T044 [US15] Amend batch contracts and add focused 20/21-file, byte-boundary, email/replay assertions in tests/portal.test.js.
+- [x] T045 [US15] Raise shared MAX_FILES and UI message, verify synthetic 20-file selection/drop and existing batch guards, update README/quickstart, run test/lint/build/Pages compile and deploy.

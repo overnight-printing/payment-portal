@@ -372,6 +372,28 @@ test('payment trust boundaries and durable recovery', async (t) => {
     } finally { f.restore(); }
   });
 
+  await t.test('twenty invoice attachments send once while count and byte limits remain enforced', async () => {
+    const f = fixture();
+    try {
+      const cookie = await login();
+      const pdf = (size = 32) => { const bytes = Buffer.alloc(size); bytes.write('%PDF-1.4'); return bytes.toString('base64'); };
+      const files = Array.from({ length: 20 }, (_, index) => ({ filename: `invoice-${57000 + index}.pdf`, content: pdf() }));
+      const body = { request_id: crypto.randomUUID(), order_number: Array.from({ length: 20 }, (_, index) => String(57000 + index)).join(', '), amount: '200.00', customer_name: 'Synthetic Buyer', company_name: '', customer_email: 'batch@example.invalid', send_email: true };
+      assert.equal((await handleApi(context(req('/create-link', { ...body, attachments: [...files, { filename: 'invoice-57020.pdf', content: pdf() }] }, cookie)))).status, 400);
+      assert.equal((await handleApi(context(req('/create-link', { ...body, attachments: [{ filename: 'large.pdf', content: pdf(5 * 1024 * 1024 + 1) }] }, cookie)))).status, 413);
+      const maxSize = pdf(5 * 1024 * 1024);
+      assert.equal((await handleApi(context(req('/create-link', { ...body, attachments: [{ filename: 'a.pdf', content: maxSize }, { filename: 'b.pdf', content: maxSize }, files[0]] }, cookie)))).status, 413);
+      assert.equal(f.counts.create, 0); assert.equal(f.counts.email, 0);
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const response = await handleApi(context(req('/create-link', { ...body, attachments: files }, cookie)));
+        assert.equal(response.status, 200); assert.equal((await response.json()).email_status, 'accepted');
+      }
+      assert.equal(f.counts.create, 1); assert.equal(f.counts.email, 1);
+      assert.deepEqual(f.requests.find((r) => r.host === 'api.resend.com').body.attachments, files);
+      assert.equal(f.record().order_number, body.order_number); assert.equal(f.record().amount, '200.00');
+    } finally { f.restore(); }
+  });
+
   await t.test('dashboard queries and snapshots are bounded, nullable and literal', () => {
     assert.equal(dashboardQuery(new URLSearchParams('search=%25_%27')).search, "%_'");
     assert.equal(dashboardQuery(new URLSearchParams()).limit, 25);
