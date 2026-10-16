@@ -96,3 +96,8 @@ Order: T021 → T022/T023 → T024/T025 → T026 → T027. Implementation remain
 ## US15 Twenty-invoice batch
 - [x] T044 [US15] Amend batch contracts and add focused 20/21-file, byte-boundary, email/replay assertions in tests/portal.test.js.
 - [x] T045 [US15] Raise shared MAX_FILES and UI message, verify synthetic 20-file selection/drop and existing batch guards, update README/quickstart, run test/lint/build/Pages compile and deploy.
+
+## US16 Shared-company AR batches
+- [x] T046 [US16] Reproduce real PDF intake; add parser and shared-company batch regression tests in tests/portal.test.js.
+- [x] T047 [US16] Fix shared batch matching, confirmed-total/recipient defaults and partial-row feedback in shared/validation.js, server/invoice.js and src/pages/CreateLink.jsx.
+- [x] T048 [US16] Verify actual 12 PDFs and synthetic edge/mobile/20-file workflows, run test/lint/build/Pages compile, document and deploy.

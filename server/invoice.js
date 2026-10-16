@@ -27,7 +27,6 @@ export function parseInvoiceText(text) {
   const total = /(?:^|\n)TOTAL\s*:?[\s$]*([+-]?\s*\$?\s*[\d,]+(?:\.\d+)?|\([\d,$.]+\))(?![\d,.])/i.exec(content);
   if (due) fields.amount = usdAmount(due[1]);
   else if (total && !/AMOUNT DUE|deposit|credit|paid|balance/i.test(content)) {
-    fields.amount = usdAmount(total[1]);
     warnings.push('Only a total was found. Confirm the outstanding balance before using it.');
   } else warnings.push('Confirm the outstanding balance; a total is not necessarily the amount due.');
   if (/\b(EUR|GBP|CAD|AUD)\b|[€£]/.test(content)) fields.currency = 'unsupported';

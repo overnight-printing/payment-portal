@@ -217,7 +217,8 @@ export default function CreateLink() {
   const parsed = uploadedInvoices.filter((inv) => ['success', 'review'].includes(inv.status));
   const total = parsed.reduce((sum, inv) => sum + (moneyCents(inv.amount) || 0), 0);
   const first = parsed[0];
-  const defaults = { orderNumber: parsed.every((inv) => inv.orderNumber.trim()) ? parsed.map((inv) => inv.orderNumber).join(', ') : '', amount: total > 0 && parsed.every((inv) => inv.status === 'success' && moneyCents(inv.amount) !== null) ? decimalAmount(total) : '', customerName: first?.customerName || '', companyName: first?.companyName || '', customerEmail: first?.customerEmail || '' };
+  const billingEmails = parsed.map((inv) => inv.customerEmail.trim()).filter(Boolean);
+  const defaults = { orderNumber: parsed.every((inv) => inv.orderNumber.trim()) ? parsed.map((inv) => inv.orderNumber).join(', ') : '', amount: total > 0 && parsed.every((inv) => moneyCents(inv.amount) !== null) ? decimalAmount(total) : '', customerName: first?.customerName || '', companyName: first?.companyName || '', customerEmail: new Set(billingEmails.map((email) => email.toLowerCase())).size === 1 ? billingEmails[0] : '' };
   const { orderNumber, amount, customerName, companyName, customerEmail } = { ...defaults, ...billingEdits };
   const autofilledFields = new Set(Object.keys(defaults).filter((name) => defaults[name] && !(name in billingEdits)));
   const editField = (name, value) => {
@@ -478,7 +479,7 @@ export default function CreateLink() {
                   <span className="invoice-status" aria-live="polite">
                     {inv.status === 'success' 
                       ? `Invoice #${inv.orderNumber || 'Unknown'} • $${inv.amount || '0.00'}` 
-                      : inv.status === 'review' && inv.attachment ? 'Enter missing billing details' : inv.message}
+                      : inv.status === 'review' && inv.attachment ? inv.orderNumber && inv.amount ? `Invoice #${inv.orderNumber} • $${inv.amount} • ${inv.customerEmail ? 'Review billing details' : 'No email on invoice'}` : 'Enter missing billing details' : inv.message}
                   </span>
                 </div>
               </div>

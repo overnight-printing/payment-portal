@@ -75,8 +75,10 @@ export function batchIssue(invoices) {
   const parsed = invoices.filter((item) => ['success', 'review'].includes(item.status));
   const identities = parsed.map((item) => item.orderNumber.trim().toLowerCase()).filter(Boolean);
   if (new Set(identities).size !== identities.length) return 'Duplicate invoice numbers found. Remove the duplicate or review a replacement.';
+  const companies = parsed.map((item) => item.companyName.trim().replace(/\s+/g, ' ').toLowerCase());
+  if (companies.length && companies.every(Boolean) && new Set(companies).size === 1) return '';
   const mixed = ['customerEmail', 'customerName', 'companyName'].some((field) => new Set(parsed.map((item) => item[field].trim().toLowerCase()).filter(Boolean)).size > 1);
-  if (mixed) return 'These invoices belong to different customers. Create a separate link for each customer.';
+  if (mixed) return 'Use invoices for the same customer or company.';
   return '';
 }
 

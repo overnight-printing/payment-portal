@@ -146,6 +146,10 @@ test('payment trust boundaries and durable recovery', async (t) => {
     assert.equal(parseInvoiceText('No: 123\nAMOUNT DUE $1,234.56').amount, '1234.56');
     assert.equal(parseInvoiceText('No: 123\nAMOUNT DUE $1,23').amount, '');
     assert.equal(parseInvoiceText('No: 123\nAMOUNT DUE $1.2.3').amount, '');
+    const partial = parseInvoiceText('No: 123\nShip To:\nBuyer One\nExample Company\nPhone: 206-555-0100\nQuantity Description Amount\nAMOUNT DUE $58.00');
+    assert.equal(partial.amount, '58.00'); assert.equal(partial.order_number, '123'); assert.equal(partial.customer_email, '');
+    assert.equal(parseInvoiceText('No: 123\nTOTAL $58.00').amount, '');
+    assert.equal(parseInvoiceText('No: 123\nAMOUNT DUE -$5.00\nTOTAL $58.00').amount, '');
     assert(validCardholderName('Jamie Cardholder')); assert(!validCardholderName(' ')); assert(!validCardholderName('x'.repeat(31)));
   });
 
@@ -634,6 +638,13 @@ test('payment trust boundaries and durable recovery', async (t) => {
     assert(batchIssue([row, { ...row, orderNumber: '456', customerEmail: 'other@example.invalid' }]));
     assert(batchIssue([{ ...row, status: 'review', attachment: null }]));
     assert.equal(batchIssue([{ ...row, status: 'review' }]), '');
+    const company = { ...row, companyName: 'Example Company' };
+    const contact = { ...company, orderNumber: '456', customerName: 'Other Buyer', customerEmail: 'other@example.invalid' };
+    assert.equal(batchIssue([company, contact]), '');
+    assert.equal(batchIssue([company, { ...contact, companyName: '  EXAMPLE   COMPANY  ', customerEmail: '', status: 'review' }]), '');
+    assert(batchIssue([company, { ...contact, companyName: 'Other Company' }]));
+    assert(batchIssue([company, { ...contact, companyName: '' }]));
+    assert(batchIssue([company, { ...contact, orderNumber: company.orderNumber }]));
   });
 
   await t.test('malformed bodies and missing setup never leak exceptions', async () => {
