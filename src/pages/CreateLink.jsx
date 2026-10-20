@@ -163,6 +163,8 @@ export default function CreateLink() {
     scanControllersRef.current.forEach((controller) => controller.abort());
     scanControllersRef.current.clear(); filesRef.current.clear();
     resetBilling(); setUploadedInvoices([]); setCreatedLink(''); setLinkSummary(null); setError(null);
+    setCopyStatus('idle'); setLastLinkWasEmailed(true); setEmailFailed(false); setEmailUnconfirmed(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
     setPasscodeEntry(''); setShowPasscode(false); setCreationUncertain(false); requestRef.current = null;
     dragCounterRef.current = 0; setIsDraggingOver(false);
     sessionStorage.removeItem('portal_creation_request');
@@ -230,6 +232,7 @@ export default function CreateLink() {
     if (!ACCEPTED_TYPES.includes(file.type) && !ACCEPTED_EXTENSIONS.some((ext) => file.name.toLowerCase().endsWith(ext))) { setError('Choose a PDF, PNG, JPEG or WebP invoice.'); return; }
     if (!file.size || file.size > MAX_FILE_BYTES || filesRef.current.size >= MAX_FILES || [...filesRef.current.values()].reduce((sum, item) => sum + item.file.size, file.size) > MAX_ATTACHMENT_BYTES) { setError(`Use up to ${MAX_FILES} invoices, at most 5 MB each and 10 MB total.`); return; }
     if ([...filesRef.current.values()].some((item) => item.file.name === file.name && item.file.size === file.size && item.file.lastModified === file.lastModified)) { setError('This file is already in the batch. Remove it before adding a replacement.'); return; }
+    if (createdLink && !filesRef.current.size) clearWorkflow();
     const id = crypto.randomUUID();
     const epoch = workflowRef.current;
     filesRef.current.set(id, { file, hash: '' });
@@ -420,12 +423,14 @@ export default function CreateLink() {
 
   const issue = batchIssue(uploadedInvoices);
   const handleCopy = async () => {
+    const epoch = workflowRef.current;
     try {
       await navigator.clipboard.writeText(createdLink);
+      if (workflowRef.current !== epoch) return;
       setCopyStatus('copied');
-      window.setTimeout(() => setCopyStatus('idle'), 2500);
+      window.setTimeout(() => { if (workflowRef.current === epoch) setCopyStatus('idle'); }, 2500);
     } catch {
-      setCopyStatus('failed');
+      if (workflowRef.current === epoch) setCopyStatus('failed');
     }
   };
 
@@ -541,6 +546,7 @@ export default function CreateLink() {
             {copyStatus === 'copied' && 'Link copied to clipboard.'}
             {copyStatus === 'failed' && 'Clipboard access was unavailable. Select and copy the link manually.'}
           </p>
+          <button type="button" className="btn btn-secondary" disabled={locked} onClick={() => { clearWorkflow(); window.requestAnimationFrame(() => uploadButtonRef.current?.focus()); }}>Send another</button>
         </div>
       )}
 

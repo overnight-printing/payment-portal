@@ -101,3 +101,7 @@ Order: T021 → T022/T023 → T024/T025 → T026 → T027. Implementation remain
 - [x] T046 [US16] Reproduce real PDF intake; add parser and shared-company batch regression tests in tests/portal.test.js.
 - [x] T047 [US16] Fix shared batch matching, confirmed-total/recipient defaults and partial-row feedback in shared/validation.js, server/invoice.js and src/pages/CreateLink.jsx.
 - [x] T048 [US16] Verify actual 12 PDFs and synthetic edge/mobile/20-file workflows, run test/lint/build/Pages compile, document and deploy.
+
+## US17 Consecutive customer batches
+- [x] T049 [US17] Reproduce stale prior result and add focused synthetic browser assertions for consecutive batches and original recovery locks.
+- [x] T050 [US17] Reuse reset in src/pages/CreateLink.jsx for next upload/Send another, verify browsers/test/lint/build, document and deploy.

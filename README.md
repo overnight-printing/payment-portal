@@ -37,7 +37,10 @@ retain keyboard controls and 44px action targets. Controls share 44px heights,
 Narrow desktop tables scroll within a labelled, keyboard-accessible region;
 mobile cards retain every field/action. The approved navy/blue palette, Arial
 and original logo are retained. Invoice upload/creation
-stays inside the workspace; draft fields survive internal navigation. Creation
+stays inside the workspace; draft fields survive internal navigation.
+After creating a link, upload the next customer’s invoices directly or click
+Send another to reset the form. The previous result clears when a valid new
+batch starts; pending and uncertain requests keep their recovery locks. Creation
 and unresolved recovery lock navigation to prevent duplicate operations.
 
 Overview shows paid/unpaid link amounts, latest customer email accepted/delivered count, attention
