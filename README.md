@@ -137,7 +137,7 @@ uses the bundled PDF.js/worker, disables eval and supports up to 20 pages.
   localStorage. Individual staff SSO remains a deployment identity prerequisite.
 - Staff use a full-width form with invoice intake and billing details side by side
   on desktop, stacked on mobile. Invoices can be dropped anywhere on the page.
-  Name and email are optional for Generate link only; both are required for direct
+  Name and email are optional for Create link; both are required for direct
   email sending. A supplied email must be valid. Without an email, payment still
   works and staff receives confirmation, but no customer receipt is sent.
   Cardholder name remains required at checkout. Valid details can be submitted directly. Scanning, duplicate invoice numbers,
@@ -196,3 +196,13 @@ on this machine; elsewhere set `PG_BIN` to a PostgreSQL binaries directory.
 See [the remediation specification](specs/002-audit-remediation/spec.md),
 [API contracts](specs/002-audit-remediation/contracts/api.md), and
 [validation guide](specs/002-audit-remediation/quickstart.md).
+
+Payment links now use `/p/<22-character code>` on the portal domain. The code
+encodes the full existing UUID; old `/pay/<UUID>` URLs remain valid. Creation,
+recovery, dashboard sharing and request emails use the same format. No external
+shortener or additional database mapping is involved. Keep both routes when
+rolling back so issued short links continue to open.
+
+After creating a link, the cleared billing form becomes a concise result with
+the amount, invoice, link and copy action. Send another or a new upload starts
+the next invoice. Failed/unconfirmed email warnings and manual-copy fallback remain.

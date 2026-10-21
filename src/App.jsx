@@ -1,10 +1,12 @@
 import { BrowserRouter, Routes, Route, useParams, Link } from 'react-router-dom';
 import CreateLink from './pages/CreateLink';
 import PaymentPage from './pages/PaymentPage';
+import { decodePaymentCode } from '../shared/payment-link';
 
 function InvoiceRoute() {
-  const { id } = useParams();
-  return <PaymentPage key={id} />;
+  const { id, code } = useParams();
+  const paymentLinkId = id || decodePaymentCode(code);
+  return <PaymentPage key={paymentLinkId || code} paymentLinkId={paymentLinkId} />;
 }
 
 function UnavailablePage() {
@@ -26,6 +28,7 @@ export default function App() {
       <Route path="/customers" />
     </Route>
     <Route path="/pay/:id" element={<InvoiceRoute />} />
+    <Route path="/p/:code" element={<InvoiceRoute />} />
     <Route path="*" element={<UnavailablePage />} />
   </Routes></BrowserRouter>;
 }

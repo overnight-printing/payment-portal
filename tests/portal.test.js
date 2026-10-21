@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { paymentPath, decodePaymentCode } from '../shared/payment-link.js';
 import { handleApi as rawHandleApi } from '../server/api.js';
 import { invoiceCsv } from '../server/csv.js';
 import { verifyWebhook } from '../server/email-events.js';
@@ -9,6 +10,19 @@ import { parseInvoiceText } from '../server/invoice.js';
 import { moneyCents, gatewayCents, invoiceFields, batchIssue, validCardholderName, validPaymentLink, dashboardQuery, validDashboard, UUID } from '../shared/validation.js';
 
 const id = '00000000-0000-4000-8000-000000000001';
+
+test('compact payment paths preserve every UUID bit and reject noncanonical codes', () => {
+  const ids = [id, 'ffffffff-ffff-ffff-ffff-ffffffffffff', ...Array.from({ length: 100 }, () => crypto.randomUUID())];
+  const paths = ids.map(value => paymentPath(value));
+  assert.equal(new Set(paths).size, ids.length);
+  for (const [index, path] of paths.entries()) {
+    assert.match(path, /^\/p\/[A-Za-z0-9_-]{22}$/);
+    assert.equal(decodePaymentCode(path.slice(3)), ids[index]);
+    assert.equal(paymentPath(ids[index].toUpperCase()), path);
+  }
+  for (const code of [null, '', id, 'A'.repeat(21), 'A'.repeat(23), 'A'.repeat(21) + 'B', 'A'.repeat(21) + '=', 'A'.repeat(21) + '/', '<script>']) assert.equal(decodePaymentCode(code), null);
+  assert.throws(() => paymentPath('invalid'));
+});
 const env = { APP_ENV: 'test', PUBLIC_ORIGIN: 'https://portal.invalid', SUPABASE_URL: 'https://database.invalid', SUPABASE_SERVICE_ROLE_KEY: 'synthetic-only', CARDPOINTE_USER: 'synthetic-only', CARDPOINTE_PASS: 'synthetic-only', CARDPOINTE_MID: 'synthetic-only', STAFF_PASSCODE: 'synthetic-passcode-only', SESSION_SECRET: 'synthetic-session-secret-for-local-tests-only', RESEND_API_KEY: 'synthetic-only' };
 const validPayment = { paymentLinkId: id, amount: '10.00', cardholderName: 'Jamie Cardholder', token: '9'.padEnd(16, '0'), expiry: '1299', cvv2: '000', zip: '00000' };
 const invoice = () => ({ id, order_number: 'AUDIT-001', amount: '10.00', customer_name: 'Audit Buyer', customer_email: 'audit@example.invalid', status: 'pending', retref: null, paid_at: null, expires_at: '2099-01-01T00:00:00Z', receipt_sent: false, link_email_sent: false });
@@ -370,6 +384,9 @@ test('payment trust boundaries and durable recovery', async (t) => {
       const recovered = await (await handleApi(context(req(`/create-link?request_id=${body.request_id}`, undefined, cookie)))).json();
       assert.equal(recovered.email_status, 'failed');
       const email = f.requests.find((r) => r.host === 'api.resend.com').body;
+      assert(email.text.includes(`${env.PUBLIC_ORIGIN}${paymentPath(id)}`));
+      assert(email.html.includes(`${env.PUBLIC_ORIGIN}${paymentPath(id)}`));
+      assert(!email.text.includes('/pay/'));
       assert(email.html.includes('&lt;b&gt;Literal name&lt;/b&gt;')); assert(!email.html.includes('<b>Literal name</b>')); assert(email.text.includes('<b>Literal name</b>'));
       assert.equal((await handleApi(context(req('/create-link', { ...body, amount: '-1.00' }, cookie)))).status, 400);
       assert.equal((await handleApi(context(req('/create-link', { ...body, amount: '20.00' }, cookie)))).status, 409);

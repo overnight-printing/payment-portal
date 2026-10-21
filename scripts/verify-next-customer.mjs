@@ -32,7 +32,7 @@ for (const engine of [chromium, webkit]) {
     for (const file of files) transfer.items.add(new File([new Uint8Array(file.bytes)], file.name, { type: file.mimeType }));
     document.body.dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, bubbles: true, cancelable: true }));
   }, files.map(file => ({ ...file, buffer: undefined, bytes: [...file.buffer] })));
-  const sent = () => page.getByText('Payment link generated', { exact: true }).waitFor();
+  const sent = () => page.getByRole('region', { name: 'Created payment link', exact: true }).waitFor();
   try {
     await page.goto(base + '/send'); await page.getByRole('button', { name: 'Upload invoices', exact: true }).waitFor();
     const first = [invoice(80001, 'Alice', 'alice@example.invalid'), invoice(80002, 'Alice', 'alice@example.invalid')];

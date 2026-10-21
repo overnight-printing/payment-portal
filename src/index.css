@@ -1175,6 +1175,30 @@ body:has(.staff-shell) { background: var(--color-surface-muted); }
   animation: highlight-field 2s ease forwards;
 }
 
+.staff-details-form label { font-size: 1rem; }
+.staff-details-form input { font-size: 1rem; }
+.staff-details-form #amount { font-weight: 700; }
+.link-result {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--color-primary-border);
+  border-radius: 9px;
+  background: var(--color-surface);
+  color: var(--color-heading);
+}
+.link-result-status { display: flex; align-items: center; gap: 8px; color: var(--color-success); }
+.link-result-status h2 { margin: 0; font-size: 1rem; line-height: 1.5; }
+.link-result-status.is-warning, .link-result-warning { color: var(--color-warning); }
+.link-result-summary { display: flex; flex-direction: column; gap: 4px; margin-top: 16px; overflow-wrap: anywhere; }
+.link-result-amount { font-size: 2rem; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.link-result-invoice { font-size: 1.125rem; font-weight: 700; }
+.link-result-email { font-size: 1rem; color: var(--color-text); }
+.link-result-warning { margin: 12px 0; }
+.link-result .copy-input { font-size: 1rem; }
+.link-result .copy-status { min-height: 0; font-size: 0.875rem; }
+.link-result-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 16px; }
+.link-result-actions .text-button { min-height: 44px; display: inline-flex; align-items: center; }
+
 .copy-block {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

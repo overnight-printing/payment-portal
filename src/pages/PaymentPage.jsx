@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
 import Icon from '../components/Icon';
 import PaymentForm from '../components/PaymentForm';
 import { apiRequest } from '../lib/api';
@@ -20,8 +19,7 @@ function parseCustomerName(rawValue = '') {
   };
 }
 
-export default function PaymentPage() {
-  const { id } = useParams();
+export default function PaymentPage({ paymentLinkId: id }) {
   const [loading, setLoading] = useState(true);
   const [errorKind, setErrorKind] = useState('');
   const [paymentLink, setPaymentLink] = useState(null);

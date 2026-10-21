@@ -1,3 +1,4 @@
+import { paymentPath } from '../shared/payment-link.js';
 import { CARD_TOKEN, UUID, moneyCents, decimalAmount, gatewayCents, safeText, validEmail, validExpiry, validCardholderName, escapeHtml, MAX_FILES, MAX_FILE_BYTES, MAX_ATTACHMENT_BYTES, dashboardQuery, validDashboard, validStaffDetail, validStaffLink } from '../shared/validation.js';
 import { analyzeInvoice } from './invoice.js';
 import { staffReceiptBody, customerReceiptBody } from './staff-receipt.js';
@@ -404,7 +405,7 @@ async function emailLink(context, id, requestId, files = [], kind = 'payment_lin
         const email = {
           from: kind === 'staff_receipt' ? 'Billing Alerts <accounting@overnightprintingseattle.com>' : 'Overnight Printing Seattle <accounting@overnightprintingseattle.com>',
           to: kind === 'staff_receipt' ? ['accounting@overnightprintingseattle.com', 'contact@overnightprintingseattle.com'] : [record.customer_email],
-          ...(isLink ? emailBody(record, `${origin}/pay/${id}`) : kind === 'staff_receipt' ? staffReceiptBody(record) : customerReceiptBody(record)),
+          ...(isLink ? emailBody(record, `${origin}${paymentPath(id)}`) : kind === 'staff_receipt' ? staffReceiptBody(record) : customerReceiptBody(record)),
           tags: [{ name: 'portal_app', value: 'payment_portal' }, { name: 'portal_request', value: requestId }, { name: 'portal_link', value: id }, { name: 'portal_kind', value: kind }],
           ...(isLink && files.length ? { attachments: files } : {}),
         };

@@ -1,3 +1,4 @@
+import { paymentPath, decodePaymentCode } from '../../shared/payment-link';
 import { useState, useRef, useEffect, useEffectEvent } from 'react';
 import Icon from '../components/Icon';
 import Dashboard from './Dashboard';
@@ -147,6 +148,11 @@ export default function CreateLink() {
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const fileInputRef = useRef(null);
   const uploadButtonRef = useRef(null);
+  const resultTitleRef = useRef(null);
+
+  useEffect(() => {
+    if (createdLink) resultTitleRef.current?.focus();
+  }, [createdLink]);
   const dragCounterRef = useRef(0);
   const submissionRef = useRef(false);
   const filesRef = useRef(new Map());
@@ -207,7 +213,7 @@ export default function CreateLink() {
         const { response, data } = await apiRequest(`/create-link?request_id=${encodeURIComponent(requestId)}`, { signal: controller.signal });
         if (controller.signal.aborted) return;
         if (response.ok && UUID.test(data?.id || '')) {
-          setCreatedLink(`${window.location.origin}/pay/${data.id}`); setLastLinkWasEmailed(data.email_sent === true); setEmailFailed(data.email_status === 'failed'); setEmailUnconfirmed(['pending', 'unknown'].includes(data.email_status));
+          setCreatedLink(`${window.location.origin}${paymentPath(data.id)}`); setLastLinkWasEmailed(data.email_sent === true); setEmailFailed(data.email_status === 'failed'); setEmailUnconfirmed(['pending', 'unknown'].includes(data.email_status));
           sessionStorage.removeItem('portal_creation_request');
         } else if (response.status !== 404) setError('An earlier creation request still needs recovery. Re-enter the same billing details or contact the administrator.');
       } catch { if (!controller.signal.aborted) setError('An earlier creation request could not be checked. Retry after your connection recovers.'); }
@@ -423,7 +429,7 @@ export default function CreateLink() {
       setLastLinkWasEmailed(data.email_status === 'accepted');
       setEmailFailed(data.email_status === 'failed');
       setEmailUnconfirmed(['pending', 'unknown'].includes(data.email_status));
-      setCreatedLink(`${window.location.origin}/pay/${data.id}`);
+      setCreatedLink(`${window.location.origin}${paymentPath(data.id)}`);
       setCreationUncertain(false); requestRef.current = null; sessionStorage.removeItem('portal_creation_request');
       resetBilling(); filesRef.current.clear(); setUploadedInvoices([]);
     } finally { submissionRef.current = false; setIsLoading(false); setActiveSubmitAction(''); }
@@ -466,7 +472,7 @@ export default function CreateLink() {
 
         <button ref={uploadButtonRef} type="button" className="invoice-upload-area" aria-label="Upload invoices" disabled={locked} onClick={() => fileInputRef.current?.click()}>
           <span className="upload-symbol"><Icon name="upload" size={24} /></span>
-          <span>Drop invoices here or click to upload</span>
+          <span>Drop invoices or upload</span>
         </button>
 
       {/* ---- Uploaded Invoices List ---- */}
@@ -523,18 +529,20 @@ export default function CreateLink() {
           <div><strong>Link not created</strong><p>{error}</p></div>
         </div>
       )}
-
+      </div>
       {createdLink && (
-        <div className={`alert ${emailFailed || emailUnconfirmed ? 'alert-warning' : 'alert-success'} alert-stacked fade-in`} role="status" aria-live="polite">
-          <div className="alert-heading">
-            <Icon name="check" />
-            <strong>Payment link generated</strong>
+        <section className="link-result fade-in" aria-label="Created payment link">
+          <div className={`link-result-status${emailFailed || emailUnconfirmed ? ' is-warning' : ''}`} role="status">
+            <Icon name={emailFailed || emailUnconfirmed ? 'warning' : 'check'} />
+            <h2 ref={resultTitleRef} tabIndex={-1}>{emailUnconfirmed ? 'Email unconfirmed' : emailFailed ? 'Email failed' : lastLinkWasEmailed ? 'Email accepted' : 'Link ready'}</h2>
           </div>
-          <p>
-            {emailUnconfirmed ? 'The link was created. Email status is unconfirmed; check before sending again.' : emailFailed ? 'The link was created, but the customer email was not accepted. Copy the link to share it manually.' : lastLinkWasEmailed ? 'The customer email was accepted for delivery.' : 'Copy the link below to share it manually.'}
-          </p>
-          <Link className="text-button" to={`/invoices?invoice=${createdLink.split('/').at(-1)}`}>View invoice in dashboard</Link>
-          {linkSummary && <p>Invoice #{linkSummary.orderNumber} · ${linkSummary.amount}{linkSummary.customerEmail && ` · ${linkSummary.customerEmail}`}</p>}
+          {linkSummary && <div className="link-result-summary">
+            <strong className="link-result-amount">${Number(linkSummary.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+            <span className="link-result-invoice">Invoice #{linkSummary.orderNumber}</span>
+            {linkSummary.customerEmail && <span className="link-result-email">{linkSummary.customerEmail}</span>}
+          </div>}
+          {emailUnconfirmed && <p className="link-result-warning">Check email status before resending.</p>}
+          {emailFailed && <p className="link-result-warning">Copy the link or retry from the invoice.</p>}
           <div className="copy-block">
             <input
               type="text"
@@ -544,24 +552,25 @@ export default function CreateLink() {
               onClick={(e) => e.target.select()}
               aria-label="Generated payment link"
             />
-            <button type="button" className="btn btn-secondary" onClick={handleCopy}>
+            <button type="button" className="btn btn-primary" onClick={handleCopy}>
               <Icon name="copy" />
               {copyStatus === 'copied' ? 'Copied' : 'Copy link'}
             </button>
           </div>
-          <p className={`copy-status${copyStatus === 'failed' ? ' is-error' : ''}`} aria-live="polite">
-            {copyStatus === 'copied' && 'Link copied to clipboard.'}
-            {copyStatus === 'failed' && 'Clipboard access was unavailable. Select and copy the link manually.'}
-          </p>
-          <button type="button" className="btn btn-secondary" disabled={locked} onClick={() => { clearWorkflow(); window.requestAnimationFrame(() => uploadButtonRef.current?.focus()); }}>Send another</button>
-        </div>
+          {copyStatus !== 'idle' && <p className={`copy-status${copyStatus === 'failed' ? ' is-error' : ''}`} role="status">
+            {copyStatus === 'copied' ? 'Link copied.' : 'Select the link to copy it.'}
+          </p>}
+          <div className="link-result-actions">
+            <button type="button" className="btn btn-secondary" disabled={locked} onClick={() => { clearWorkflow(); window.requestAnimationFrame(() => uploadButtonRef.current?.focus()); }}>Send another</button>
+            <Link className="text-button" to={`/invoices?invoice=${decodePaymentCode(createdLink.split('/').at(-1))}`}>View invoice</Link>
+          </div>
+        </section>
       )}
 
-      </div>
-      <form onSubmit={handleSubmit} className="staff-details-form" noValidate>
+      {!createdLink && <form onSubmit={handleSubmit} className="staff-details-form" noValidate>
         <div className="staff-form-grid">
         <div className="form-group">
-          <label htmlFor="orderNumber">Invoice number <span className="required-text">Required</span></label>
+          <label htmlFor="orderNumber">Invoice number</label>
           <input
             id="orderNumber"
             type="text"
@@ -575,7 +584,7 @@ export default function CreateLink() {
         </div>
 
         <div className="form-group">
-          <label htmlFor="amount">Amount (USD) <span className="required-text">Required</span></label>
+          <label htmlFor="amount">Amount</label>
           <input
             id="amount"
             type="number"
@@ -591,7 +600,7 @@ export default function CreateLink() {
         </div>
 
         <div className="form-group">
-          <label htmlFor="customerName">Name <span className="optional-text">Required for email</span></label>
+          <label htmlFor="customerName">Name <span className="optional-text">For email</span></label>
           <input
             id="customerName"
             type="text"
@@ -604,7 +613,7 @@ export default function CreateLink() {
         </div>
 
         <div className="form-group">
-          <label htmlFor="companyName">Company name <span className="optional-text">Optional</span></label>
+          <label htmlFor="companyName">Company</label>
           <input
             id="companyName"
             type="text"
@@ -617,7 +626,7 @@ export default function CreateLink() {
         </div>
 
         <div className="form-group staff-field-wide">
-          <label htmlFor="customerEmail">Email <span className="optional-text">Required for email</span></label>
+          <label htmlFor="customerEmail">Email <span className="optional-text">For email</span></label>
           <input
             id="customerEmail"
             type="email"
@@ -636,18 +645,18 @@ export default function CreateLink() {
             {activeSubmitAction === 'link-only' ? (
               <><span className="spinner spinner-accent" aria-hidden="true" /> Generating link…</>
             ) : (
-              <><Icon name="link" /> {creationUncertain ? 'Recover existing request' : 'Generate link only'}</>
+              <><Icon name="link" /> {creationUncertain ? 'Recover existing request' : 'Create link'}</>
             )}
           </button>
           <button type="submit" name="submitAction" value="send-email" className="btn btn-primary" disabled={isLoading || creationUncertain || Boolean(issue)}>
             {activeSubmitAction === 'send-email' ? (
               <><span className="spinner" aria-hidden="true" /> Generating & sending…</>
             ) : (
-              <><Icon name="mail" /> Generate & send email</>
+              <><Icon name="mail" /> Send email</>
             )}
           </button>
         </div>
-      </form>
+      </form>}
     </div>
     </section>
     </StaffShell>

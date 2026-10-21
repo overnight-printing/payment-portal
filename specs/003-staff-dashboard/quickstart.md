@@ -137,3 +137,16 @@ Apply migration `202610210005_optional_link_contacts.sql` before deploying the s
 Run `PREVIEW_PORT=5179 npm run demo`, then `PLAYWRIGHT_MODULE=/tmp/payment-portal-browser/node_modules/playwright node scripts/verify-copy-only.mjs` for synthetic conditional validation, blank-contact creation/public checkout, cardholder requirement, desktop width/columns and 320/393/768/1024/1440px reflow checks in Chrome/WebKit. Run the existing next-customer regression on port 5178 to cover batch reset and uncertain-request locks. No live payments or emails are used.
 
 Chrome/WebKit checks above passed, including the existing consecutive-customer/reset/uncertain-recovery regression. Synthetic screenshots: `.preview/copy-only-chromium-desktop.png` and `.preview/copy-only-chromium-mobile.png`. Physical devices and live payment/email delivery were not exercised.
+
+## Readable results and compact links — 2026-10-21
+The successful result replaces the empty billing form. Grouped amount and invoice are prominent; Copy link is primary, Send another/View invoice are secondary. Labels and successful instructions are shortened. Failure and unconfirmed email warnings, clipboard fallback, next-batch reset/focus and creation recovery remain.
+
+New generated links use `/p/<22-character base64url UUID>`; existing `/pay/<UUID>` links still open. All 128 bits are preserved, with canonical alphabet/length validation. Public lookup and charge contracts still use UUIDs; no schema/dependency/configuration changes or external shortener. Keep the compact route during rollback for issued links.
+
+Run the two existing browser regressions plus `PLAYWRIGHT_MODULE=/tmp/payment-portal-browser/node_modules/playwright node scripts/verify-readable-result.mjs` against preview port 5179. Verify result hierarchy, grouped amounts, short-copy/failure fallback, original UUID dashboard navigation, failed/pending/accepted mail states, legacy/compact checkout, invalid-code no-fetch, paid/pending displays and 320/393/768/1024/1440/1600px fit. Screenshots `.preview/readable-result-chromium-1600.png` and `-393.png` contain synthetic data.
+
+All 40 Node tests, lint/build and Pages compilation passed; initial readable-result browser checks passed in Chrome/WebKit. Live charges and email delivery were not exercised; physical devices not tested.
+
+Chrome/WebKit also passed the existing copy-only validation/checkout and consecutive-customer/reset/uncertain-recovery regressions against the compact routes and result UI. Successful result screenshots were captured without clipboard-error state.
+
+Final focused checks also verify result-heading focus after creation and 200% text reflow at 320px. Existing API/payment contracts and database records are unchanged.

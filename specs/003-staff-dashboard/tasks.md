@@ -110,3 +110,9 @@ Order: T021 → T022/T023 → T024/T025 → T026 → T027. Implementation remain
 - [x] T051 [US18] Add API/public validation and isolated SQL optional-contact, direct-send, payment and receipt regression checks.
 - [x] T052 [US18] Update frontend layout/action validation, shared/server contact handling and optional-contact SQL function; keep preview/contracts consistent.
 - [x] T053 [US18] Verify desktop/mobile/contactless checkout/reset and test/lint/build/Pages/isolated DB; apply migration with data/grant checks and deploy.
+
+## US19 Readable results and compact payment URLs
+- [x] T054 [US19] Add canonical full-UUID compact-path helper and focused codec/email regression tests in `shared/payment-link.js` and `tests/portal.test.js`.
+- [x] T055 [US19] Simplify result/form copy and hierarchy in `src/pages/CreateLink.jsx` and `src/index.css`; preserve warning, clipboard and reset states.
+- [x] T056 [US19] Use short paths across `src/App.jsx`, `src/pages/PaymentPage.jsx`, `src/pages/Dashboard.jsx`, `src/pages/CreateLink.jsx`, and `server/api.js`; keep old routes and UUID API contracts.
+- [x] T057 [US19] Verify mobile/desktop, clipboard, email states and legacy/short checkout in browser checks; run required gates, update README/quickstart and deploy.
