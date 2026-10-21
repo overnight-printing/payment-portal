@@ -105,3 +105,8 @@ Order: T021 → T022/T023 → T024/T025 → T026 → T027. Implementation remain
 ## US17 Consecutive customer batches
 - [x] T049 [US17] Reproduce stale prior result and add focused synthetic browser assertions for consecutive batches and original recovery locks.
 - [x] T050 [US17] Reuse reset in src/pages/CreateLink.jsx for next upload/Send another, verify browsers/test/lint/build, document and deploy.
+
+## US18 Full-width sending and optional contacts
+- [x] T051 [US18] Add API/public validation and isolated SQL optional-contact, direct-send, payment and receipt regression checks.
+- [x] T052 [US18] Update frontend layout/action validation, shared/server contact handling and optional-contact SQL function; keep preview/contracts consistent.
+- [x] T053 [US18] Verify desktop/mobile/contactless checkout/reset and test/lint/build/Pages/isolated DB; apply migration with data/grant checks and deploy.

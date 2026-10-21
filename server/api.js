@@ -189,7 +189,7 @@ async function staffRecord(env, id) {
   const query = new URLSearchParams({ id: `eq.${id}`, select: PUBLIC_FIELDS, limit: '1' });
   const rows = await db(env, `payment_links?${query}`);
   const record = rows?.[0];
-  if (!record || !['pending', 'paid'].includes(record.status) || moneyCents(record.amount) === null || !safeText(record.order_number) || !safeText(record.customer_name, 400) || !validEmail(record.customer_email)) throw problem('unavailable', 404);
+  if (!record || !['pending', 'paid'].includes(record.status) || moneyCents(record.amount) === null || !safeText(record.order_number) || safeText(record.customer_name, 400) === null || record.customer_email !== '' && !validEmail(record.customer_email)) throw problem('unavailable', 404);
   return record;
 }
 
@@ -288,7 +288,7 @@ async function automaticReceiptId(id, kind) {
 
 async function receipts(context, record) {
   let customer = record.receipt_sent === true;
-  if (!customer) try {
+  if (!customer && validEmail(record.customer_email)) try {
     const result = await emailLink(context, record.id, await automaticReceiptId(record.id, 'customer_receipt'), [], 'customer_receipt');
     customer = result.email_sent;
   } catch { /* Confirmed payment stays paid even if notification storage is unavailable. */ }
@@ -368,12 +368,13 @@ async function createLink(context) {
   const body = await bodyJson(request, 14500000);
   const amount = moneyCents(body.amount);
   const order = safeText(body.order_number);
-  const name = safeText(body.customer_name);
+  const name = safeText(body.customer_name ?? '');
+  const email = safeText(body.customer_email ?? '', 254);
   const company = safeText(body.company_name || '');
-  if (!UUID.test(body.request_id || '') || !order || !/^[A-Za-z0-9][A-Za-z0-9 ,./_-]{0,199}$/.test(order) || !amount || !name || company === null || !validEmail(body.customer_email) || typeof body.send_email !== 'boolean') throw problem('invalid_link_details', 400);
+  if (!UUID.test(body.request_id || '') || !order || !/^[A-Za-z0-9][A-Za-z0-9 ,./_-]{0,199}$/.test(order) || !amount || name === null || company === null || email === null || email !== '' && !validEmail(email) || typeof body.send_email !== 'boolean' || body.send_email && (!name || !validEmail(email))) throw problem('invalid_link_details', 400);
   const files = attachments(body);
-  const customer = company ? `${name} (${company})` : name;
-  const canonical = { order_number: order, amount: decimalAmount(amount), customer_name: customer, customer_email: body.customer_email.trim(), send_email: body.send_email, attachments: files };
+  const customer = company ? name ? `${name} (${company})` : company : name;
+  const canonical = { order_number: order, amount: decimalAmount(amount), customer_name: customer, customer_email: email, send_email: body.send_email, attachments: files };
   const result = await rpc(env, 'portal_create_link', {
     p_request_id: body.request_id, p_hash: await digest(JSON.stringify(canonical)), p_order_number: order,
     p_amount: decimalAmount(amount), p_customer_name: customer, p_customer_email: canonical.customer_email,
@@ -420,6 +421,8 @@ async function emailLink(context, id, requestId, files = [], kind = 'payment_lin
 
 async function sendLinkEmail(context, kind = 'payment_link') {
   const body = await staffAction(context, ['payment_link_id', 'request_id']);
+  const record = await staffRecord(context.env, body.payment_link_id);
+  if (!validEmail(record.customer_email) || kind === 'payment_link' && !safeText(record.customer_name, 400)) throw problem('action_unavailable', 409);
   return json(await emailLink(context, body.payment_link_id, body.request_id, [], kind));
 }
 

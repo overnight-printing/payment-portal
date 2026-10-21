@@ -135,8 +135,12 @@ uses the bundled PDF.js/worker, disables eval and supports up to 20 pages.
 - Staff access fails closed, uses an expiring HttpOnly session, and rate-limits
   login through durable salted-IP buckets. No reusable passcode is retained in
   localStorage. Individual staff SSO remains a deployment identity prerequisite.
-- Staff use one form and can drop invoices anywhere on the page. Valid details
-  can be submitted directly. Scanning, duplicate invoice numbers,
+- Staff use a full-width form with invoice intake and billing details side by side
+  on desktop, stacked on mobile. Invoices can be dropped anywhere on the page.
+  Name and email are optional for Generate link only; both are required for direct
+  email sending. A supplied email must be valid. Without an email, payment still
+  works and staff receives confirmation, but no customer receipt is sent.
+  Cardholder name remains required at checkout. Valid details can be submitted directly. Scanning, duplicate invoice numbers,
   duplicate file content and different customers/companies block accidental consolidation.
   Different contacts with the same explicit company can share one AR link.
   Missing invoice emails do not discard confirmed amounts; if contact emails

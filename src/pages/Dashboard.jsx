@@ -79,7 +79,7 @@ function InvoiceDetails({ id, onClose, onOpen, onChanged, onSessionExpired }) {
   const link = detail?.link;
   const url = `${window.location.origin}/pay/${id}`;
   const reasons = link?.attention_reasons || [];
-  const eligible = link?.payment_status === 'unpaid' && link.email_status !== 'pending' && validEmail(link.customer_email);
+  const eligible = link?.payment_status === 'unpaid' && link.email_status !== 'pending' && Boolean(link.customer_name?.trim()) && validEmail(link.customer_email);
   const receiptEligible = link?.payment_status === 'paid' && link.receipt_status !== 'pending' && validEmail(link.customer_email);
   return <dialog ref={dialog} className="invoice-detail-dialog" aria-labelledby="invoice-detail-title" onPointerDown={(event) => { backdropStart.current = outsidePanel(event); if (backdropStart.current) event.preventDefault(); }} onPointerUp={(event) => { if (backdropStart.current && outsidePanel(event)) close(); backdropStart.current = false; }} onPointerCancel={() => { backdropStart.current = false; }} onCancel={(event) => { event.preventDefault(); close(); }}>
     <header className="invoice-detail-header"><div><span>Invoice details</span><h2 id="invoice-detail-title">{link ? `#${link.order_number}` : 'Invoice'}</h2></div><button type="button" className="icon-button" aria-label="Close invoice details" disabled={busy} onClick={close}><Icon name="x" /></button></header>

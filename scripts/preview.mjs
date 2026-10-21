@@ -2,7 +2,7 @@ import http from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { moneyCents, decimalAmount, validCardholderName, dashboardQuery, UUID } from '../shared/validation.js';
+import { moneyCents, decimalAmount, validCardholderName, validEmail, safeText, dashboardQuery, UUID } from '../shared/validation.js';
 import { parseInvoiceText } from '../server/invoice.js';
 import { invoiceCsv } from '../server/csv.js';
 
@@ -147,14 +147,14 @@ const server = http.createServer(async (request, response) => {
     if (url.pathname === '/create-link') {
       if (request.method === 'GET') { const saved = creations.get(url.searchParams.get('request_id')); return saved ? json(saved) : json({}, 404); }
       const data = await body(request);
-      if (!moneyCents(data.amount)) return json({ code: 'invalid_link_details' }, 400);
+      if (!moneyCents(data.amount) || safeText(data.customer_name ?? '') === null || data.customer_email && !validEmail(data.customer_email) || data.send_email && (!data.customer_name?.trim() || !validEmail(data.customer_email))) return json({ code: 'invalid_link_details' }, 400);
       const saved = creations.get(data.request_id);
       if (saved) return json(saved);
       const id = randomUUID();
       const result = { id, email_sent: data.send_email && !cookie.includes('preview_email=failed'), email_status: !data.send_email ? 'not_requested' : cookie.includes('preview_email=failed') ? 'failed' : 'accepted' };
       creations.set(data.request_id, result);
       if (data.send_email) { const now = new Date().toISOString(); emails.set(data.request_id,{request_id:data.request_id,payment_link_id:id,kind:'payment_link',state:result.email_status,can_check:result.email_status==='accepted',delivery_status:null,created_at:now,finished_at:now}); }
-      records.set(id, { ...sample(id), order_number: data.order_number, amount: decimalAmount(moneyCents(data.amount)), customer_name: data.customer_name, customer_email: data.customer_email, email_status: result.email_status, created_at: new Date().toISOString() });
+      records.set(id, { ...sample(id), order_number: data.order_number, amount: decimalAmount(moneyCents(data.amount)), customer_name: data.company_name ? data.customer_name ? `${data.customer_name} (${data.company_name})` : data.company_name : data.customer_name || '', customer_email: data.customer_email || '', email_status: result.email_status, created_at: new Date().toISOString() });
       return json(result);
     }
     if (url.pathname === '/itoke/ajax-tokenizer.html') { response.writeHead(200, { ...headers, 'X-Frame-Options': 'SAMEORIGIN', 'Content-Type': 'text/html', 'Content-Security-Policy': "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-ancestors 'self'" }); response.end(frame); return; }

@@ -384,11 +384,19 @@ export default function CreateLink() {
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (submissionRef.current) return;
+    const shouldSendEmail = requestRef.current ? requestRef.current.send_email : event.nativeEvent.submitter?.value === 'send-email';
+    if (!requestRef.current) {
+      const form = event.currentTarget;
+      const name = form.elements.namedItem('customerName');
+      name.required = shouldSendEmail;
+      name.setCustomValidity(shouldSendEmail && !customerName.trim() ? 'Enter a name to send the email.' : '');
+      form.elements.namedItem('customerEmail').required = shouldSendEmail;
+      if (!form.reportValidity()) return;
+    }
     const issue = batchIssue(uploadedInvoices);
     if (!requestRef.current && issue) { setError(issue); return; }
     submissionRef.current = true;
     const epoch = workflowRef.current;
-    const shouldSendEmail = requestRef.current ? requestRef.current.send_email : event.nativeEvent.submitter?.value === 'send-email';
     setIsLoading(true); setActiveSubmitAction(shouldSendEmail ? 'send-email' : 'link-only'); setError(null); setCopyStatus('idle');
     try {
       if (!requestRef.current) {
@@ -444,7 +452,7 @@ export default function CreateLink() {
     <header className="workspace-page-heading"><h1>Send payment link</h1></header>
     <section className="card staff-card fade-in" aria-label="Create payment link">
       <div className="staff-workspace">
-      <div>
+      <div className="staff-intake">
         <input
           ref={fileInputRef}
           type="file"
@@ -460,7 +468,6 @@ export default function CreateLink() {
           <span className="upload-symbol"><Icon name="upload" size={24} /></span>
           <span>Drop invoices here or click to upload</span>
         </button>
-      </div>
 
       {/* ---- Uploaded Invoices List ---- */}
       {uploadedInvoices.length > 0 && (
@@ -527,7 +534,7 @@ export default function CreateLink() {
             {emailUnconfirmed ? 'The link was created. Email status is unconfirmed; check before sending again.' : emailFailed ? 'The link was created, but the customer email was not accepted. Copy the link to share it manually.' : lastLinkWasEmailed ? 'The customer email was accepted for delivery.' : 'Copy the link below to share it manually.'}
           </p>
           <Link className="text-button" to={`/invoices?invoice=${createdLink.split('/').at(-1)}`}>View invoice in dashboard</Link>
-          {linkSummary && <p>Invoice #{linkSummary.orderNumber} · ${linkSummary.amount} USD · {linkSummary.customerEmail}</p>}
+          {linkSummary && <p>Invoice #{linkSummary.orderNumber} · ${linkSummary.amount}{linkSummary.customerEmail && ` · ${linkSummary.customerEmail}`}</p>}
           <div className="copy-block">
             <input
               type="text"
@@ -550,7 +557,8 @@ export default function CreateLink() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="staff-details-form">
+      </div>
+      <form onSubmit={handleSubmit} className="staff-details-form" noValidate>
         <div className="staff-form-grid">
         <div className="form-group">
           <label htmlFor="orderNumber">Invoice number <span className="required-text">Required</span></label>
@@ -583,11 +591,10 @@ export default function CreateLink() {
         </div>
 
         <div className="form-group">
-          <label htmlFor="customerName">Customer name <span className="required-text">Required</span></label>
+          <label htmlFor="customerName">Name <span className="optional-text">Required for email</span></label>
           <input
             id="customerName"
             type="text"
-            required
             value={customerName}
             onChange={(e) => editField('customerName', e.target.value)}
             disabled={locked}
@@ -610,11 +617,10 @@ export default function CreateLink() {
         </div>
 
         <div className="form-group staff-field-wide">
-          <label htmlFor="customerEmail">Customer email <span className="required-text">Required</span></label>
+          <label htmlFor="customerEmail">Email <span className="optional-text">Required for email</span></label>
           <input
             id="customerEmail"
             type="email"
-            required
             value={customerEmail}
             onChange={(e) => editField('customerEmail', e.target.value)}
             disabled={locked}
@@ -642,7 +648,7 @@ export default function CreateLink() {
           </button>
         </div>
       </form>
-      </div>
+    </div>
     </section>
     </StaffShell>
     </>

@@ -191,8 +191,9 @@ a:hover {
 }
 
 .staff-card {
-  max-width: 860px;
-  margin-inline: auto;
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
   padding: 0;
   position: relative;
   overflow: hidden;
@@ -816,7 +817,14 @@ iframe[name='tokenFrame'] {
   padding: 24px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
+  align-items: start;
   gap: 24px;
+}
+
+.staff-intake, .staff-details-form { min-width: 0; }
+.staff-intake { display: flex; flex-direction: column; gap: 20px; }
+@media (min-width: 1200px) {
+  .staff-workspace { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 }
 
 /* Staff workspace: shared controls, aligned panels and compact data. */
@@ -1192,7 +1200,7 @@ body:has(.staff-shell) { background: var(--color-surface-muted); }
   margin-top: auto;
   padding-top: 24px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
   gap: 12px;
 }
 
@@ -1260,11 +1268,6 @@ body:has(.staff-shell) { background: var(--color-surface-muted); }
   }
 }
 
-@media (max-width: 1023px) {
-  .staff-card {
-    max-width: 840px;
-  }
-}
 
 .breakable {
   overflow-wrap: anywhere;

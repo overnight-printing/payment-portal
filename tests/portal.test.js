@@ -6,7 +6,7 @@ import { verifyWebhook } from '../server/email-events.js';
 import { staffReceiptBody, customerReceiptBody } from '../server/staff-receipt.js';
 import worker from '../worker/src/index.js';
 import { parseInvoiceText } from '../server/invoice.js';
-import { moneyCents, gatewayCents, invoiceFields, batchIssue, validCardholderName, dashboardQuery, validDashboard, UUID } from '../shared/validation.js';
+import { moneyCents, gatewayCents, invoiceFields, batchIssue, validCardholderName, validPaymentLink, dashboardQuery, validDashboard, UUID } from '../shared/validation.js';
 
 const id = '00000000-0000-4000-8000-000000000001';
 const env = { APP_ENV: 'test', PUBLIC_ORIGIN: 'https://portal.invalid', SUPABASE_URL: 'https://database.invalid', SUPABASE_SERVICE_ROLE_KEY: 'synthetic-only', CARDPOINTE_USER: 'synthetic-only', CARDPOINTE_PASS: 'synthetic-only', CARDPOINTE_MID: 'synthetic-only', STAFF_PASSCODE: 'synthetic-passcode-only', SESSION_SECRET: 'synthetic-session-secret-for-local-tests-only', RESEND_API_KEY: 'synthetic-only' };
@@ -85,6 +85,7 @@ function fixture(options = {}) {
         if (body.p_retref) attempt.retref = body.p_retref;
         if (body.p_last4) attempt.card_last4 = body.p_last4;
         if (body.p_state === 'paid') record = { ...record, status: 'paid', retref: body.p_retref, paid_at: new Date().toISOString(), card_last4: attempt.card_last4 || null };
+        if (creation) creation = record;
         return Response.json({ state: attempt.state, retref: attempt.retref });
       }
       if (url.pathname.endsWith('/portal_create_link')) {
@@ -398,6 +399,43 @@ test('payment trust boundaries and durable recovery', async (t) => {
     } finally { f.restore(); }
   });
 
+  await t.test('copy-only links allow empty contacts through lookup and payment without inventing a recipient', async () => {
+    const f = fixture();
+    try {
+      const cookie = await login();
+      const body = { request_id: crypto.randomUUID(), order_number: 'COPY-ONLY', amount: '10.00', customer_name: '', customer_email: '', company_name: '', attachments: [], send_email: false };
+      for (const invalid of [{ ...body, send_email: true }, { ...body, customer_name: 'Buyer', send_email: true }, { ...body, customer_email: 'buyer@example.invalid', send_email: true }, { ...body, customer_email: 'invalid' }]) {
+        assert.equal((await handleApi(context(req('/create-link', invalid, cookie)))).status, 400);
+      }
+      assert.equal(f.counts.create, 0); assert.equal(f.counts.email, 0);
+      for (let retry = 0; retry < 2; retry++) assert.equal((await handleApi(context(req('/create-link', body, cookie)))).status, 200);
+      assert.equal(f.counts.create, 1); assert.equal(f.record().customer_name, ''); assert.equal(f.record().customer_email, '');
+      const lookup = await handleApi(context(req(`/payment-link?id=${id}`)));
+      assert.equal(lookup.status, 200); assert(validPaymentLink(await lookup.json()));
+      const send = await handleApi(context(req('/send-link-email', { payment_link_id: id, request_id: crypto.randomUUID() }, cookie)));
+      assert.equal(send.status, 409); assert.equal(f.emails.size, 0);
+      const payment = await handleApi(context(req('/charge', { ...validPayment, attemptId: crypto.randomUUID() })));
+      assert.equal(payment.status, 200); assert.equal((await payment.json()).receipt_sent, false);
+      assert.equal(f.record().status, 'paid'); assert.equal(f.counts.auth, 1); assert.equal(f.counts.capture, 1);
+      assert.equal(f.counts.email, 1);
+      const email = f.requests.find(r => r.host === 'api.resend.com').body;
+      assert.deepEqual(email.to, ['accounting@overnightprintingseattle.com', 'contact@overnightprintingseattle.com']);
+      assert.equal([...f.emails.values()].filter(e => e.kind === 'customer_receipt').length, 0);
+    } finally { f.restore(); }
+  });
+
+  await t.test('copy-only links retain supplied partial contact details and company without placeholders', async () => {
+    for (const contact of [{ customer_name: 'Buyer', customer_email: '', company_name: '' }, { customer_name: '', customer_email: 'buyer@example.invalid', company_name: '' }, { customer_name: '', customer_email: '', company_name: 'Example Company' }]) {
+      const f = fixture();
+      try {
+        const cookie = await login();
+        const response = await handleApi(context(req('/create-link', { request_id: crypto.randomUUID(), order_number: 'PARTIAL', amount: '10.00', attachments: [], send_email: false, ...contact }, cookie)));
+        assert.equal(response.status, 200); assert.equal(f.record().customer_name, contact.customer_name || contact.company_name); assert.equal(f.record().customer_email, contact.customer_email); assert.equal(f.counts.email, 0);
+        const lookup = await handleApi(context(req(`/payment-link?id=${id}`))); assert.equal(lookup.status, 200); assert(validPaymentLink(await lookup.json()));
+      } finally { f.restore(); }
+    }
+  });
+
   await t.test('dashboard queries and snapshots are bounded, nullable and literal', () => {
     assert.equal(dashboardQuery(new URLSearchParams('search=%25_%27')).search, "%_'");
     assert.equal(dashboardQuery(new URLSearchParams()).limit, 25);
@@ -590,7 +628,7 @@ test('payment trust boundaries and durable recovery', async (t) => {
     const bad=fixture({record:{status:'paid',customer_name:'invalid\nname'}});
     try {
       const cookie=await login();const response=await handleApi(context(req('/send-receipt-email',{payment_link_id:id,request_id:crypto.randomUUID()},cookie)));
-      assert.equal((await response.json()).email_status,'failed');assert.equal(bad.counts.email,0);
+      assert.equal(response.status,404);assert.equal(bad.counts.email,0);assert.equal(bad.emails.size,0);
     }finally{bad.restore();}
   });
 

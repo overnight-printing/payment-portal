@@ -166,10 +166,10 @@ export default function PaymentPage() {
               <span className="receipt-label">Invoice number</span>
               <span className="receipt-value">#{paymentLink?.order_number}</span>
             </div>
-            <div className="receipt-row">
+            {customerName && <div className="receipt-row">
               <span className="receipt-label">Customer name</span>
               <span className="receipt-value">{customerName}</span>
-            </div>
+            </div>}
             {companyName && (
               <div className="receipt-row">
                 <span className="receipt-label">Company name</span>
@@ -220,10 +220,10 @@ export default function PaymentPage() {
               <span className="receipt-label">Invoice number</span>
               <span className="receipt-value">#{paymentLink.order_number}</span>
             </div>
-            <div className="receipt-row">
+            {customerName && <div className="receipt-row">
               <span className="receipt-label">Customer name</span>
               <span className="receipt-value">{customerName}</span>
-            </div>
+            </div>}
             {companyName && (
               <div className="receipt-row">
                 <span className="receipt-label">Company name</span>

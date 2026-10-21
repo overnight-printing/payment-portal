@@ -84,7 +84,7 @@ export function batchIssue(invoices) {
 
 export function validPaymentLink(value) {
   return Boolean(value && ['https://fts.cardconnect.com', 'https://fts-uat.cardconnect.com'].includes(value.tokenizer_origin) && UUID.test(value.id) && safeText(value.order_number) && moneyCents(value.amount) !== null &&
-    safeText(value.customer_name, 400) && validEmail(value.customer_email) && value.currency === 'USD' &&
+    safeText(value.customer_name, 400) !== null && (value.customer_email === '' || validEmail(value.customer_email)) && value.currency === 'USD' &&
     ['pending', 'processing', 'review', 'paid'].includes(value.status) &&
     (value.retref == null || safeText(value.retref, 64) !== null) &&
     (value.card_last4 == null || typeof value.card_last4 === 'string' && /^\d{4}$/.test(value.card_last4)));
