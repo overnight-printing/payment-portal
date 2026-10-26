@@ -198,55 +198,25 @@ export default function PaymentPage({ paymentLinkId: id }) {
     <main className="card payment-card payment-checkout-card fade-in">
       <header className="payment-page-header">
         <img width={761} height={240} src="/logo.png" alt="Overnight Printing Seattle" className="payment-brand-logo" />
-        <div className="payment-header-copy">
-          <h1>Complete payment</h1>
-        </div>
-        <div className="payment-header-badge">
-          <Icon name="lock" size={17} />
-          <span>Secure checkout</span>
-        </div>
+        <span>Invoice payment</span>
       </header>
 
       <div className="payment-workspace">
         <section className="payment-context-panel" aria-labelledby="invoice-summary-title">
-          <div className="payment-section-heading">
-            <h2 id="invoice-summary-title">Invoice summary</h2>
-          </div>
-
-          <div className="receipt" aria-label="Invoice summary">
-            <div className="receipt-row">
-              <span className="receipt-label">Invoice number</span>
-              <span className="receipt-value">#{paymentLink.order_number}</span>
-            </div>
-            {customerName && <div className="receipt-row">
-              <span className="receipt-label">Customer name</span>
-              <span className="receipt-value">{customerName}</span>
-            </div>}
-            {companyName && (
-              <div className="receipt-row">
-                <span className="receipt-label">Company name</span>
-                <span className="receipt-value">{companyName}</span>
-              </div>
-            )}
-          </div>
-
-          <div className="amount-due" aria-label="Total due">
-            <div>
-              <span className="amount-label">Total due</span>
-            </div>
-            <strong className="amount-value">${formatAmount(paymentLink.amount)} <small>USD</small></strong>
-          </div>
-
-          <div className="accepted-cards" aria-label="Accepted cards">
-            <Icon name="card" />
-            <span>Visa · Mastercard · American Express · Discover</span>
-          </div>
+          <p className="checkout-amount-label">Amount due</p>
+          <strong className="checkout-amount amount-value">${formatAmount(paymentLink.amount)}</strong>
+          <h1 id="invoice-summary-title">Invoice #{paymentLink.order_number}</h1>
+          {(customerName || companyName) && <dl className="checkout-billing">
+            <dt>Billed to</dt>
+            {customerName && <dd>{customerName}</dd>}
+            {companyName && <dd>{companyName}</dd>}
+          </dl>}
         </section>
 
         <section className="payment-entry-panel" aria-labelledby="payment-details-title">
-          <div className="payment-section-heading">
-            <h2 id="payment-details-title">Payment details</h2>
-          </div>
+          <h2 id="payment-details-title">Pay invoice</h2>
+          <div className="checkout-card-method"><Icon name="card" size={18} /><span>Credit or debit card</span></div>
+          <p className="accepted-cards" aria-label="Accepted cards">Visa, Mastercard, American Express, Discover</p>
           {pending ? <div className="alert alert-warning alert-stacked" role="status">
             <h2>Checking your payment</h2>
             <p>Your payment may still be processing. Please do not pay again or use a different link.</p>
@@ -263,6 +233,7 @@ export default function PaymentPage({ paymentLinkId: id }) {
           />}
         </section>
       </div>
+      <footer className="checkout-footer"><a href="mailto:contact@overnightprintingseattle.com">Contact Overnight Printing Seattle</a></footer>
     </main>
   );
 }

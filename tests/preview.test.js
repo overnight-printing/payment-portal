@@ -15,6 +15,8 @@ test('local preview uses synthetic endpoints and name validation', async () => {
     assert.equal(invoice.customer_email, 'customer@example.invalid'); assert.equal(invoice.status, 'pending');
     const frame = await (await fetch(`${base}/itoke/ajax-tokenizer.html`)).text();
     assert(frame.includes('Select sample card')); assert(!frame.includes('type="password"'));
+    assert(frame.includes('id="ccnumfield" type="tel" readonly'));
+    assert(frame.includes("new URLSearchParams(location.search).get('css')"));
     const payment = (cardholderName) => fetch(`${base}/charge`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paymentLinkId: id, cardholderName }) });
     assert.equal((await payment('')).status, 400);
     const paid = await (await payment('Different Sample Cardholder')).json();

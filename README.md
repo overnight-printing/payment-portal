@@ -206,3 +206,9 @@ rolling back so issued short links continue to open.
 After creating a link, the cleared billing form becomes a concise result with
 the amount, invoice, link and copy action. Send another or a new upload starts
 the next invoice. Failed/unconfirmed email warnings and manual-copy fallback remain.
+
+Customer checkout uses a branded header, prominent amount/invoice and plain
+billed-to details beside one card form (stacked on mobile). Hosted card fields
+reset their own browser margins/padding and match the native 50px controls.
+The hosted input owns its keyboard-focus outline across the iframe boundary.
+No processor, payment API, link, receipt or staff behavior changed.

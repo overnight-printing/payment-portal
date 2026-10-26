@@ -116,3 +116,8 @@ Order: T021 → T022/T023 → T024/T025 → T026 → T027. Implementation remain
 - [x] T055 [US19] Simplify result/form copy and hierarchy in `src/pages/CreateLink.jsx` and `src/index.css`; preserve warning, clipboard and reset states.
 - [x] T056 [US19] Use short paths across `src/App.jsx`, `src/pages/PaymentPage.jsx`, `src/pages/Dashboard.jsx`, `src/pages/CreateLink.jsx`, and `server/api.js`; keep old routes and UUID API contracts.
 - [x] T057 [US19] Verify mobile/desktop, clipboard, email states and legacy/short checkout in browser checks; run required gates, update README/quickstart and deploy.
+
+## US20 Customer checkout readability
+- [x] T058 [US20] Rework invoice hierarchy and consistent customer form in `src/pages/PaymentPage.jsx`, `src/components/PaymentForm.jsx` and `src/index.css`.
+- [x] T059 [US20] Fix hosted CSS inset/height reset and realistic sample-only preview in `src/components/PaymentForm.jsx`, `scripts/preview.mjs` and `tests/preview.test.js`; verify sanitizer/empty hosted geometry.
+- [x] T060 [US20] Add focused checkout browser checks in `scripts/verify-checkout.mjs`, run required gates, update README/quickstart and deploy with screenshot proof.

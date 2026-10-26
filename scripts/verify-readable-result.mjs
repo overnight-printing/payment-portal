@@ -48,7 +48,7 @@ for (const engine of [chromium, webkit]) {
     assert.equal(await page.getByRole('link', { name: 'Open payment link', exact: true }).getAttribute('href'), paymentPath(id));
     for (const path of [new URL(url).pathname, '/pay/' + id]) {
       await page.goto(base + path); await page.getByLabel('Name on card', { exact: true }).waitFor();
-      assert.equal(await page.getByRole('region', { name: 'Invoice summary', exact: true }).count(), 1);
+      assert.equal(await page.getByRole('region', { name: /^Invoice #/ }).count(), 1);
     }
     const reads = publicReads;
     await page.goto(base + '/p/' + 'A'.repeat(21) + 'B');

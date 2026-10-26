@@ -50,17 +50,23 @@ export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess, o
 
   const [iframeUrl] = useState(() => {
     const cssStyle = `
+      html, body, form { margin: 0; padding: 0; width: 100%; }
       input {
         font-family: Arial, Helvetica, sans-serif;
         font-size: 16px;
-        color: #1e293b;
+        color: #172033;
         border: none;
         outline: none;
         background: transparent;
         width: 100%;
+        height: 48px;
+        line-height: 48px;
+        margin: 0;
+        padding: 0;
         box-sizing: border-box;
       }
       input::placeholder { color: #64748b; }
+      input:focus { outline: 2px solid #2563eb; outline-offset: -2px; }
     `;
     const origin = tokenizerOrigin;
     return `${origin}/itoke/ajax-tokenizer.html?formatinput=true&enhancedresponse=true&sendcardtypingevent=true&css=${encodeURIComponent(cssStyle)}`;
@@ -360,11 +366,10 @@ export default function PaymentForm({ amount, paymentLinkId, onPaymentSuccess, o
         ) : (
           <>
             <Icon name="lock" />
-            <span>Pay ${Number(amount).toFixed(2)}</span>
+            <span>Pay ${Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           </>
         )}
       </button>
-      <p className="payment-support">Need help? Email <a href="mailto:contact@overnightprintingseattle.com">contact@overnightprintingseattle.com</a>.</p>
     </form>
   );
 }

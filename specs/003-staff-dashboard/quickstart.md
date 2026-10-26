@@ -150,3 +150,10 @@ All 40 Node tests, lint/build and Pages compilation passed; initial readable-res
 Chrome/WebKit also passed the existing copy-only validation/checkout and consecutive-customer/reset/uncertain-recovery regressions against the compact routes and result UI. Successful result screenshots were captured without clipboard-error state.
 
 Final focused checks also verify result-heading focus after creation and 200% text reflow at 320px. Existing API/payment contracts and database records are unchanged.
+
+## Customer checkout refinement — 2026-10-26
+Replaced nested summary/total panels and generic security badge with real merchant branding, a prominent grouped amount/invoice, plain billed-to details and one white card form. Native controls are 50px; the hosted input is 48px inside its border, with zero body/form/input margins and consistent 12px outer inset. CardPointe's production CSS sanitizer retained these resets and the hosted input's own visible keyboard focus outline (parent focus does not propagate through the iframe). API/auth/token-origin/source/duplicate-charge/recovery behavior unchanged; no migration, dependency or configuration changes.
+
+Use `PREVIEW_PORT=5179 npm run demo` then `PLAYWRIGHT_MODULE=/tmp/payment-portal-browser/node_modules/playwright node scripts/verify-checkout.mjs`. Browser tests use synthetic data/charge responses only and inspect the actual empty CardPointe field without typing card data. Chrome/WebKit passed text/height alignment at 320/375/393/768/800/1024/1440px, CVV visibility, keyboard/200%/reduced-motion, long/missing billing, validation, decline/reload, network-to-paid inquiry and duplicate-submit checks. Frame measurements wait for viewport rendering to settle on WebKit. Screenshots `.preview/checkout-chromium-1440.png` and `-393.png` use sample data only.
+
+All 40 Node tests, lint/build and Pages compilation passed. Existing copy-only checkout/validation and compact-link/result/dashboard browser regressions also passed in Chrome/WebKit. No live payments or emails were sent; physical devices not tested. Release rollback is source-only and preserves the existing short/legacy URL routes.
