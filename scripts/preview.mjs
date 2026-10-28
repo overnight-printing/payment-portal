@@ -82,12 +82,15 @@ const server = http.createServer(async (request, response) => {
       const data=await body(request),record=records.get(data.payment_link_id),kind=url.pathname==='/send-receipt-email'?'customer_receipt':'payment_link';
       if(!UUID.test(data.request_id||'')||!UUID.test(data.payment_link_id||''))return json({},400);
       const existing=emails.get(data.request_id);
-      if(existing)return existing.payment_link_id===data.payment_link_id&&existing.kind===kind?json({id:record.id,email_status:existing.state,email_sent:existing.state==='accepted'}):json({},409);
+      if(existing)return existing.payment_link_id===data.payment_link_id&&existing.kind===kind&&(!Object.hasOwn(data,'customer_email')||existing.recipients?.[0]===data.customer_email.trim())?json({id:record.id,email_status:existing.state,email_sent:existing.state==='accepted'}):json({},409);
       if(!record||shape(record).payment_status!==(kind==='customer_receipt'?'paid':'unpaid'))return json({},409);
+      const hasContacts=Object.hasOwn(data,'customer_name')||Object.hasOwn(data,'customer_email');
+      if(hasContacts&&(kind!=='payment_link'||!safeText(data.customer_name,400)||!validEmail(safeText(data.customer_email,254))))return json({},400);
       const statusKey=kind==='customer_receipt'?'receipt_status':'email_status';
       if(record[statusKey]==='pending')return json({id:record.id,email_status:'pending',email_sent:false});
+      if(hasContacts){record.customer_name=data.customer_name.trim();record.customer_email=data.customer_email.trim();}
       const state=cookie.includes('preview_email=failed')?'failed':'accepted',now=new Date().toISOString();
-      emails.set(data.request_id,{request_id:data.request_id,payment_link_id:record.id,kind,state,delivery_status:null,can_check:state==='accepted',created_at:now,finished_at:now});
+      emails.set(data.request_id,{request_id:data.request_id,payment_link_id:record.id,kind,state,recipients:[record.customer_email],delivery_status:null,can_check:state==='accepted',created_at:now,finished_at:now});
       record[statusKey]=state;record.last_email_at=now;if(kind==='customer_receipt')record.receipt_sent=state==='accepted';
       return json({id:record.id,email_status:state,email_sent:state==='accepted'});
     }

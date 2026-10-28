@@ -50,14 +50,17 @@ function fixture(options = {}) {
       if (url.pathname.endsWith('/portal_rate_limit')) return options.rateFailure ? Response.json({}, { status: 500 }) : Response.json(options.limited ? false : true);
       if (url.pathname.endsWith('/portal_staff_dashboard')) return Response.json(options.badDashboard ? { links: 'invalid' } : dashboard());
       if (url.pathname.endsWith('/portal_staff_link')) return Response.json({ link: { ...dashboard().links[0], customer_name: record.customer_name, customer_email: record.customer_email, expires_at: record.expires_at, email_status: record.link_email_status || 'unknown' }, emails: [...emails.values()].map(({ request_id, state, created_at, finished_at }) => ({ request_id, state, created_at, finished_at })) });
-      if (url.pathname.endsWith('/portal_claim_email')) {
+      if (url.pathname.endsWith('/portal_claim_email') || url.pathname.endsWith('/portal_claim_link_email_to')) {
+        const contacts = url.pathname.endsWith('/portal_claim_link_email_to');
+        const kind = contacts ? 'payment_link' : body.p_kind;
         const existing = emails.get(body.p_request_id);
-        if (existing) return Response.json(existing.payment_link_id === body.p_link_id && existing.kind === body.p_kind ? { code: 'existing', state: existing.state } : { code: 'conflict' });
+        if (existing) return Response.json(existing.payment_link_id === body.p_link_id && existing.kind === kind && (!contacts || existing.recipients[0] === body.p_customer_email) ? { code: 'existing', state: existing.state } : { code: 'conflict' });
         const current = { ...record, ...options.record };
-        if (body.p_kind === 'payment_link' ? current.status !== 'pending' || Date.parse(current.expires_at) <= Date.now() || current.cancelled_at || attempt && ['processing', 'unknown', 'review'].includes(attempt.state) : current.status !== 'paid') return Response.json({ code: 'unavailable' });
-        if ([...emails.values()].some((email) => email.state === 'pending' && email.kind === body.p_kind)) return Response.json({ code: 'pending', state: 'pending' });
-        emails.set(body.p_request_id, { request_id: body.p_request_id, payment_link_id: body.p_link_id, kind: body.p_kind, recipients: body.p_kind === 'staff_receipt' ? ['accounting@overnightprintingseattle.com','contact@overnightprintingseattle.com'] : [current.customer_email], state: 'pending', created_at: new Date().toISOString(), finished_at: null });
-        if (body.p_kind === 'payment_link') { record.link_email_status = 'pending'; if (creation) creation.link_email_status = 'pending'; }
+        if (kind === 'payment_link' ? current.status !== 'pending' || Date.parse(current.expires_at) <= Date.now() || current.cancelled_at || attempt && ['processing', 'unknown', 'review'].includes(attempt.state) : current.status !== 'paid') return Response.json({ code: 'unavailable' });
+        if ([...emails.values()].some((email) => email.state === 'pending' && email.kind === kind)) return Response.json({ code: 'pending', state: 'pending' });
+        if (contacts) { record = { ...record, customer_name: body.p_customer_name, customer_email: body.p_customer_email }; if (creation) creation = record; current.customer_email = record.customer_email; }
+        emails.set(body.p_request_id, { request_id: body.p_request_id, payment_link_id: body.p_link_id, kind: kind, recipients: kind === 'staff_receipt' ? ['accounting@overnightprintingseattle.com','contact@overnightprintingseattle.com'] : [current.customer_email], state: 'pending', created_at: new Date().toISOString(), finished_at: null });
+        if (kind === 'payment_link') { record.link_email_status = 'pending'; if (creation) creation.link_email_status = 'pending'; }
         return Response.json({ code: 'claimed', state: 'pending' });
       }
       if (url.pathname.endsWith('/portal_finish_email')) {
@@ -541,6 +544,56 @@ test('payment trust boundaries and durable recovery', async (t) => {
       assert.equal((await handleApi(context(foreign))).status, 403);
       for (const query of ['start=2026-02-30', 'start=2026-10-13&end=2026-10-12', 'view=bogus']) assert.equal(dashboardQuery(new URLSearchParams(query)), null);
     } finally { f.restore(); }
+  });
+
+  await t.test('copy-only invoices accept a later recipient, replay once and retain earlier recipient history', async () => {
+    const f = fixture();
+    try {
+      const cookie = await login();
+      await handleApi(context(req('/create-link', { request_id: crypto.randomUUID(), order_number: 'LATER', amount: '10.00', customer_name: '', customer_email: '', send_email: false }, cookie)));
+      const before = { ...f.record() };
+      const body = { payment_link_id: id, request_id: crypto.randomUUID(), customer_name: '  Later Buyer  ', customer_email: '  later@example.invalid  ' };
+      for (const invalid of [{ customer_name: '' }, { customer_email: 'invalid' }, { customer_name: null }, { customer_name: 'x'.repeat(401) }, { amount: '11.00' }]) {
+        assert.equal((await handleApi(context(req('/send-link-email', { ...body, ...invalid }, cookie)))).status, 400);
+      }
+      const partial = { payment_link_id: id, request_id: crypto.randomUUID(), customer_email: 'later@example.invalid' };
+      assert.equal((await handleApi(context(req('/send-link-email', partial, cookie)))).status, 400);
+      assert.equal((await handleApi(context(req('/send-link-email', body)))).status, 401);
+      assert.equal(f.counts.email, 0); assert.equal(f.record().customer_email, '');
+      for (let retry = 0; retry < 2; retry++) assert.equal((await (await handleApi(context(req('/send-link-email', body, cookie)))).json()).email_status, 'accepted');
+      assert.equal(f.counts.email, 1); assert.equal(f.counts.create, 1);
+      assert.equal(f.record().customer_name, 'Later Buyer'); assert.equal(f.record().customer_email, 'later@example.invalid');
+      for (const key of ['id','amount','order_number','expires_at','status']) assert.equal(f.record()[key], before[key]);
+      const sent = f.requests.find(request => request.host === 'api.resend.com').body;
+      assert.deepEqual(sent.to, ['later@example.invalid']); assert(sent.text.includes(paymentPath(id))); assert.equal(sent.attachments, undefined);
+      const changed = { ...body, customer_email: 'changed@example.invalid' };
+      assert.equal((await handleApi(context(req('/send-link-email', changed, cookie)))).status, 409);
+      assert.equal((await handleApi(context(req('/send-link-email', { ...changed, request_id: crypto.randomUUID() }, cookie)))).status, 200);
+      assert.equal(f.counts.email, 2); assert.equal(f.record().customer_email, 'changed@example.invalid');
+      assert.deepEqual(f.emails.get(body.request_id).recipients, ['later@example.invalid']);
+      assert.equal((await (await handleApi(context(req('/send-link-email', body, cookie)))).json()).email_status, 'accepted');
+      assert.equal(f.record().customer_email, 'changed@example.invalid'); assert.equal(f.counts.email, 2);
+      assert.equal((await handleApi(context(req('/send-receipt-email', body, cookie)))).status, 400);
+    } finally { f.restore(); }
+  });
+
+  await t.test('late recipient edits cannot bypass pending sends or payment lifecycle locks', async () => {
+    for (const options of [{ emailNetworkFailure: true }, { record: { status: 'paid' } }, { record: { cancelled_at: new Date().toISOString() } }, { record: { expires_at: '2020-01-01' } }, { attempt: { state: 'unknown' } }]) {
+      const f = fixture(options);
+      try {
+        const cookie = await login();
+        const body = { payment_link_id: id, request_id: crypto.randomUUID(), customer_name: 'Later buyer', customer_email: 'later@example.invalid' };
+        const response = await handleApi(context(req('/send-link-email', body, cookie)));
+        if (options.emailNetworkFailure) {
+          assert.equal((await response.json()).email_status, 'pending');
+          const other = await handleApi(context(req('/send-link-email', { ...body, request_id: crypto.randomUUID(), customer_email: 'other@example.invalid' }, cookie)));
+          assert.equal((await other.json()).email_status, 'pending'); assert.equal(f.counts.email, 1);
+          assert.equal(f.record().customer_email, 'later@example.invalid');
+        } else {
+          assert.equal(response.status, 409); assert.equal(f.counts.email, 0); assert.equal(f.record().customer_email, 'audit@example.invalid');
+        }
+      } finally { f.restore(); }
+    }
   });
 
   await t.test('unknown email locks survive new request IDs and reject paid or expired mail', async () => {

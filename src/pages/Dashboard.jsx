@@ -28,6 +28,11 @@ function InvoiceDetails({ id, onClose, onOpen, onChanged, onSessionExpired }) {
   const [refresh, setRefresh] = useState(0);
   const [confirm, setConfirm] = useState('');
   const [copied, setCopied] = useState('');
+  const [emailDraft, setEmailDraft] = useState(null);
+  const [emailLocked, setEmailLocked] = useState(false);
+  const recipientRequest = useRef(null);
+  const emailName = useRef(null);
+  const emailButton = useRef(null);
   const close = () => {
     if (acting.current) return;
     const element = dialog.current;
@@ -49,7 +54,15 @@ function InvoiceDetails({ id, onClose, onOpen, onChanged, onSessionExpired }) {
         if (controller.signal.aborted) return;
         if (response.status === 401) { expired(); return; }
         if (!response.ok || !validStaffDetail(data) || data.link.id !== id) { setError('Could not load this invoice. Retry or select another invoice.'); return; }
-        for (const [path, requestId] of Object.entries(requests.current)) if (data.emails.some((email) => email.request_id === requestId && email.state !== 'pending')) delete requests.current[path];
+        for (const [path, requestId] of Object.entries(requests.current)) {
+          const saved = data.emails.find((email) => email.request_id === requestId && email.state !== 'pending');
+          if (!saved) continue;
+          delete requests.current[path];
+          if (path === '/send-link-email') {
+            recipientRequest.current = null; setEmailLocked(false);
+            if (saved.state === 'accepted') { setEmailDraft(null); setMessage('Email accepted for sending.'); dialog.current.querySelector('#invoice-detail-title').focus(); }
+          }
+        }
         setDetail(data);
       } catch { if (!controller.signal.aborted) setError('Could not load this invoice. Check your connection and retry.'); }
       finally { if (!controller.signal.aborted) setLoading(false); }
@@ -59,12 +72,20 @@ function InvoiceDetails({ id, onClose, onOpen, onChanged, onSessionExpired }) {
   const action = async (path, extra = {}) => {
     if (acting.current) return;
     acting.current = true; setBusy(true); setMessage('');
+    if (path === '/send-link-email') {
+      setEmailLocked(true);
+      recipientRequest.current ||= extra;
+      extra = recipientRequest.current;
+    }
     const body = { payment_link_id: id, ...extra };
     if (['/send-link-email', '/send-receipt-email', '/replace-link'].includes(path)) { requests.current[path] ||= crypto.randomUUID(); body.request_id = requests.current[path]; }
     try {
       const { response, data } = await apiRequest(path, { ...postJson(body), timeout: 45000 });
       if (response.status === 401) { onSessionExpired(); return; }
-      if (!response.ok) { setMessage(response.status === 409 ? 'This action is unavailable for the current invoice state. Refresh its details.' : 'Could not confirm the outcome. Refresh before trying again.'); return; }
+      if (!response.ok) {
+        if (path === '/send-link-email' && [400, 404, 409].includes(response.status)) { delete requests.current[path]; recipientRequest.current = null; setEmailLocked(false); }
+        setMessage(response.status === 409 ? 'This action is unavailable for the current invoice state. Refresh its details.' : 'Could not confirm the outcome. Refresh before trying again.'); return;
+      }
       if (path === '/replace-link' && UUID.test(data?.id || '') && data.replaced_id === id) { delete requests.current[path]; onOpen(data.id); return; }
       if (data?.id !== id) { setMessage('Could not confirm the outcome. Refresh before trying again.'); return; }
       if (path === '/cancel-link' && data.cancelled === true) setMessage('Payment link cancelled.');
@@ -72,7 +93,13 @@ function InvoiceDetails({ id, onClose, onOpen, onChanged, onSessionExpired }) {
       else if (path === '/check-email-status') setMessage(data.code === 'provider_review' ? 'Delivery is still unconfirmed. Check the email provider before resending.' : data.code === 'no_delivery_update' ? 'No new delivery information is available.' : `Email status: ${emailLabels[data.email_status] || 'Unknown'}.`);
       else if (['accepted', 'failed', 'pending'].includes(data.email_status)) {
         setMessage(data.email_status === 'accepted' ? 'Email accepted for sending.' : data.email_status === 'failed' ? 'Email was not accepted. Check the recipient and try again.' : 'Email send is unconfirmed. Check its status before sending again.');
-        if (data.email_status !== 'pending') delete requests.current[path];
+        if (data.email_status !== 'pending') {
+          delete requests.current[path];
+          if (path === '/send-link-email') { recipientRequest.current = null; setEmailLocked(false); }
+        }
+        if (path === '/send-link-email' && data.email_status === 'accepted') {
+          setEmailDraft(null); dialog.current.querySelector('#invoice-detail-title').focus();
+        }
       } else setMessage('Could not confirm the outcome. Refresh before trying again.');
     } catch { setMessage('Could not confirm the outcome. Refresh before trying again.'); }
     finally { acting.current = false; setBusy(false); setConfirm(''); setRefresh((value) => value + 1); onChanged(); }
@@ -80,10 +107,10 @@ function InvoiceDetails({ id, onClose, onOpen, onChanged, onSessionExpired }) {
   const link = detail?.link;
   const url = `${window.location.origin}${paymentPath(id)}`;
   const reasons = link?.attention_reasons || [];
-  const eligible = link?.payment_status === 'unpaid' && link.email_status !== 'pending' && Boolean(link.customer_name?.trim()) && validEmail(link.customer_email);
+  const eligible = link?.payment_status === 'unpaid' && link.email_status !== 'pending';
   const receiptEligible = link?.payment_status === 'paid' && link.receipt_status !== 'pending' && validEmail(link.customer_email);
   return <dialog ref={dialog} className="invoice-detail-dialog" aria-labelledby="invoice-detail-title" onPointerDown={(event) => { backdropStart.current = outsidePanel(event); if (backdropStart.current) event.preventDefault(); }} onPointerUp={(event) => { if (backdropStart.current && outsidePanel(event)) close(); backdropStart.current = false; }} onPointerCancel={() => { backdropStart.current = false; }} onCancel={(event) => { event.preventDefault(); close(); }}>
-    <header className="invoice-detail-header"><div><span>Invoice details</span><h2 id="invoice-detail-title">{link ? `#${link.order_number}` : 'Invoice'}</h2></div><button type="button" className="icon-button" aria-label="Close invoice details" disabled={busy} onClick={close}><Icon name="x" /></button></header>
+    <header className="invoice-detail-header"><div><span>Invoice details</span><h2 id="invoice-detail-title" tabIndex={-1}>{link ? `#${link.order_number}` : 'Invoice'}</h2></div><button type="button" className="icon-button" aria-label="Close invoice details" disabled={busy} onClick={close}><Icon name="x" /></button></header>
     <div className="invoice-detail-content">
       {loading && <p role="status">Loading invoice…</p>}
       {error && <div className="alert alert-error" role="alert"><span>{error}</span><button className="btn btn-secondary" type="button" onClick={() => setRefresh((value) => value + 1)}>Retry</button></div>}
@@ -95,11 +122,23 @@ function InvoiceDetails({ id, onClose, onOpen, onChanged, onSessionExpired }) {
         {link.replaced_by && <button type="button" className="text-button" onClick={() => onOpen(link.replaced_by)}>View replacement link</button>}
         {link.replaces_link_id && <button type="button" className="text-button" onClick={() => onOpen(link.replaces_link_id)}>View previous link</button>}
         <div className="invoice-detail-link"><label htmlFor="invoice-detail-link">Payment link</label><input id="invoice-detail-link" readOnly value={url} onFocus={(event) => event.currentTarget.select()} /><div className="detail-link-actions"><button className="btn btn-secondary" type="button" onClick={async () => { try { await navigator.clipboard.writeText(url); setCopied('Link copied'); } catch { setCopied('Select the payment link above to copy it.'); dialog.current.querySelector('#invoice-detail-link').focus(); } }}><Icon name="copy" size={16} /> Copy link</button><Link className="btn btn-secondary" to={paymentPath(id)} target="_blank" rel="noopener noreferrer">{link.payment_status === 'paid' ? 'View receipt' : 'Open payment link'}</Link></div>{copied && <span role="status">{copied}</span>}</div>
-        {eligible && <div className="invoice-email-action"><button type="button" className="btn btn-primary btn-full" disabled={busy} onClick={() => { void action('/send-link-email'); }}>{busy ? 'Working…' : ['unknown', 'not_requested'].includes(link.email_status) ? 'Send payment link' : 'Resend payment link'}</button><small>Original invoice attachments are not retained.</small></div>}
+        {eligible && <div className="invoice-email-action">
+          {emailDraft ? <form aria-label="Email payment link" noValidate onSubmit={(event) => {
+            event.preventDefault();
+            event.currentTarget.elements.recipientName.setCustomValidity(emailDraft.customer_name.trim() ? '' : 'Enter a name.');
+            event.currentTarget.elements.recipientEmail.setCustomValidity(validEmail(emailDraft.customer_email.trim()) ? '' : 'Enter a valid email address.');
+            if (event.currentTarget.reportValidity()) void action('/send-link-email', { customer_name: emailDraft.customer_name.trim(), customer_email: emailDraft.customer_email.trim() });
+          }}>
+            <div className="form-group"><label htmlFor="invoice-recipient-name">Name</label><input ref={emailName} id="invoice-recipient-name" name="recipientName" required maxLength={400} autoComplete="name" value={emailDraft.customer_name} disabled={busy || emailLocked} onChange={(event) => { event.target.setCustomValidity(''); setEmailDraft({ ...emailDraft, customer_name: event.target.value }); }} /></div>
+            <div className="form-group"><label htmlFor="invoice-recipient-email">Email</label><input id="invoice-recipient-email" name="recipientEmail" type="email" required maxLength={254} autoComplete="email" value={emailDraft.customer_email} disabled={busy || emailLocked} onChange={(event) => { event.target.setCustomValidity(''); setEmailDraft({ ...emailDraft, customer_email: event.target.value }); }} /></div>
+            <div className="detail-link-actions"><button type="submit" className="btn btn-primary" disabled={busy}>{busy ? 'Sending…' : emailLocked ? 'Check send status' : 'Send email'}</button><button type="button" className="btn btn-secondary" disabled={busy || emailLocked} onClick={() => { setEmailDraft(null); window.requestAnimationFrame(() => emailButton.current?.focus()); }}>Cancel</button></div>
+          </form> : <button ref={emailButton} type="button" className="btn btn-primary btn-full" disabled={busy} onClick={() => { setEmailDraft({ customer_name: link.customer_name || '', customer_email: link.customer_email || '' }); window.requestAnimationFrame(() => emailName.current?.focus()); }}>{['unknown', 'not_requested'].includes(link.email_status) ? 'Send email' : 'Resend email'}</button>}
+          <small>Original PDF attachments aren’t included.</small>
+        </div>}
         {receiptEligible && <div className="invoice-email-action"><button type="button" className="btn btn-primary btn-full" disabled={busy} onClick={() => { void action('/send-receipt-email'); }}>{busy ? 'Working…' : ['unknown', 'not_requested'].includes(link.receipt_status || 'unknown') ? 'Send receipt' : 'Resend receipt'}</button></div>}
         {['unpaid', 'expired'].includes(link.payment_status) && <div className="invoice-manage-actions">{link.payment_status === 'expired' && <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setConfirm('replace')}>Replace expired link</button>}<button type="button" className="text-button danger-text" disabled={busy} onClick={() => setConfirm('cancel')}>Cancel payment link</button></div>}
         {confirm && <div className="invoice-action-confirm" role="group" aria-label={confirm === 'cancel' ? 'Confirm cancellation' : 'Confirm replacement'}><p>{confirm === 'cancel' ? 'Cancel this link? Customers will no longer be able to pay through it.' : `Create a new link for ${dollars(moneyCents(link.amount))}? The old link will be disabled. No email will be sent yet.`}</p><div><button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setConfirm('')}>Keep current link</button><button type="button" className="btn btn-primary" disabled={busy} onClick={() => { void action(confirm === 'cancel' ? '/cancel-link' : '/replace-link'); }}>{busy ? 'Working…' : confirm === 'cancel' ? 'Confirm cancellation' : 'Create replacement'}</button></div></div>}
-        {!validEmail(link.customer_email) && <p className="detail-message">No valid customer email is recorded.</p>}
+        {!eligible && !validEmail(link.customer_email) && <p className="detail-message">No valid customer email is recorded.</p>}
         <section className="invoice-email-history"><div><h3>Email history</h3><button type="button" className="text-button" disabled={busy || loading} onClick={() => setRefresh((value) => value + 1)}>Refresh</button></div>{detail.emails.length ? <ol>{detail.emails.map((email) => <li key={email.request_id}><span className={`history-dot email-${email.delivery_status || email.state}`} /><div><strong>{kindLabels[email.kind || 'payment_link']} · {emailLabels[email.delivery_status || email.state]}</strong><time dateTime={email.created_at}>Attempted {displayDate(email.created_at)}</time>{email.kind !== 'staff_receipt' && (email.can_check || email.state === 'pending') && <button type="button" className="text-button" disabled={busy} onClick={() => { void action('/check-email-status', { email_request_id: email.request_id }); }}>Check email status</button>}</div></li>)}</ol> : <p>No recorded email attempts. Older send history may be unknown.</p>}<small>Delivered means accepted by the recipient’s mail server.</small></section>
       </>}
     </div>

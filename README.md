@@ -62,7 +62,9 @@ and outstanding amounts; expired active links remain unpaid. Historical records 
 
 The details panel shows payment/link/receipt statuses, expiry, recorded email
 attempts and specific attention reasons. Staff can send/resend an eligible unpaid
-link, send/resend a customer receipt for a paid invoice, check a known email's
+link using Send email in its details panel. The inline Name/Email form can add
+missing contacts or edit saved contacts; sending saves them on the same invoice
+and reuses its link. Staff can also send/resend a customer receipt for a paid invoice, check a known email's
 provider status, or perform inquiry-only payment checking for uncertain outcomes.
 Receipts never trigger another charge or re-send staff alerts. Durable claims
 protect both initial receipts and deliberate resends beyond provider retention.

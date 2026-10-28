@@ -388,9 +388,12 @@ async function createLink(context) {
   return json({ id: record.id, email_sent: record.link_email_sent === true, email_status: body.send_email ? 'accepted' : 'not_requested' });
 }
 
-async function emailLink(context, id, requestId, files = [], kind = 'payment_link') {
+async function emailLink(context, id, requestId, files = [], kind = 'payment_link', contacts = null) {
   const { env } = context;
-  const claim = await rpc(env, 'portal_claim_email', { p_request_id: requestId, p_link_id: id, p_kind: kind });
+  const claim = await rpc(env, contacts ? 'portal_claim_link_email_to' : 'portal_claim_email', {
+    p_request_id: requestId, p_link_id: id,
+    ...(contacts ? { p_customer_name: contacts.customer_name, p_customer_email: contacts.customer_email } : { p_kind: kind }),
+  });
   if (claim.code === 'unavailable' || claim.code === 'conflict') throw problem('email_unavailable', 409);
   let state = claim.state;
   if (claim.code === 'claimed') {
@@ -421,18 +424,24 @@ async function emailLink(context, id, requestId, files = [], kind = 'payment_lin
 }
 
 async function sendLinkEmail(context, kind = 'payment_link') {
-  const body = await staffAction(context, ['payment_link_id', 'request_id']);
+  const body = await staffAction(context, ['payment_link_id', 'request_id'], kind === 'payment_link' ? ['customer_name', 'customer_email'] : []);
+  let contacts = null;
+  if (Object.hasOwn(body, 'customer_name') || Object.hasOwn(body, 'customer_email')) {
+    const name = safeText(body.customer_name, 400), email = safeText(body.customer_email, 254);
+    if (!name || !validEmail(email)) throw problem('invalid_recipient', 400);
+    contacts = { customer_name: name, customer_email: email };
+  }
   const record = await staffRecord(context.env, body.payment_link_id);
-  if (!validEmail(record.customer_email) || kind === 'payment_link' && !safeText(record.customer_name, 400)) throw problem('action_unavailable', 409);
-  return json(await emailLink(context, body.payment_link_id, body.request_id, [], kind));
+  if (!contacts && (!validEmail(record.customer_email) || kind === 'payment_link' && !safeText(record.customer_name, 400))) throw problem('action_unavailable', 409);
+  return json(await emailLink(context, body.payment_link_id, body.request_id, [], kind, contacts));
 }
 
-async function staffAction(context, keys) {
+async function staffAction(context, keys, optional = []) {
   sameOrigin(context.request, context.env);
   await authenticated(context.request, context.env);
   await limit(context.request, context.env, new URL(context.request.url).pathname, 10);
   const body = await bodyJson(context.request);
-  if (Object.keys(body).some((key) => !keys.includes(key)) || keys.some((key) => !UUID.test(body[key] || ''))) throw problem('invalid_request', 400);
+  if (Object.keys(body).some((key) => !keys.includes(key) && !optional.includes(key)) || keys.some((key) => !UUID.test(body[key] || ''))) throw problem('invalid_request', 400);
   return body;
 }
 

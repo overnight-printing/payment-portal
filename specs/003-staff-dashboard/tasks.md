@@ -121,3 +121,9 @@ Order: T021 → T022/T023 → T024/T025 → T026 → T027. Implementation remain
 - [x] T058 [US20] Rework invoice hierarchy and consistent customer form in `src/pages/PaymentPage.jsx`, `src/components/PaymentForm.jsx` and `src/index.css`.
 - [x] T059 [US20] Fix hosted CSS inset/height reset and realistic sample-only preview in `src/components/PaymentForm.jsx`, `scripts/preview.mjs` and `tests/preview.test.js`; verify sanitizer/empty hosted geometry.
 - [x] T060 [US20] Add focused checkout browser checks in `scripts/verify-checkout.mjs`, run required gates, update README/quickstart and deploy with screenshot proof.
+
+## US21 Send existing invoices from sidebar
+- [x] T061 [US21] Add transactional recipient-and-claim migration `supabase/migrations/202610280006_link_email_contacts.sql`; cover SQL replay/race/history/grants in `scripts/test-database.mjs`.
+- [x] T062 [US21] Extend shared send boundary in `server/api.js`, `specs/003-staff-dashboard/contracts/staff-dashboard.md`, `scripts/preview.mjs`, and `tests/portal.test.js` with validated optional contact fields and existing-URL sends.
+- [x] T063 [US21] Add inline recipient composer and guarded recovery in `src/pages/Dashboard.jsx` and `src/index.css`; verify browser flows in `scripts/verify-invoice-email.mjs`.
+- [x] T064 [US21] Run required checks, document README/quickstart, apply safe production migration and deploy; show synthetic desktop/mobile proof.
